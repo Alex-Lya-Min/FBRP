@@ -1,0 +1,24 @@
+{
+  "name": "Banner Adapt",
+  "api": "1.0.0",
+  "main": "code.js",
+  "documentAccess": "dynamic-page",
+  "editorType": [
+    "figma"
+  ],
+  "ui": "ui.html",
+  "networkAccess": {
+    "allowedDomains": [
+      "https://api.anthropic.com",
+      "https://api.openai.com",
+      "https://generativelanguage.googleapis.com",
+      "https://openrouter.ai"
+    ],
+    "devAllowedDomains": [
+      "http://localhost:11434",
+      "http://localhost:1234",
+      "http://localhost:8787"
+    ],
+    "reasoning": "AI-кадрирование (выключено по умолчанию): уменьшенное превью картинки мастера отправляется в модель, которую пользователь подключил своим ключом. Ответ — только координаты объекта."
+  }
+}

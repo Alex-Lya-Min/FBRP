@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><style>
+:root{font-family:var(--font-family,Inter,Arial,sans-serif);font-size:12px;color:var(--figma-color-text,#222);background:var(--figma-color-bg,#fff)}*{box-sizing:border-box}body{margin:0}#plugin-root{height:100vh;display:flex;flex-direction:column}main{display:block;flex:1;overflow-y:auto;padding:16px}footer{display:block;padding:12px 16px;border-top:1px solid var(--figma-color-border,#ddd);background:var(--figma-color-bg,#fff)}h1{font-size:21px;margin:0;font-weight:650;letter-spacing:-.5px}p{margin:7px 0;line-height:1.5}.muted{color:var(--figma-color-text-secondary,#777)}.tag{font-size:10px;padding:4px 7px;border:1px solid var(--figma-color-border,#ddd);border-radius:99px}.row{display:flex;align-items:center;gap:8px}.between{justify-content:space-between}.section{border-bottom:1px solid var(--figma-color-border,#ddd);padding:14px 0}details>summary{cursor:pointer;font-weight:600;padding:5px 0;list-style:none}details>summary::before{content:'＋';display:inline-block;width:20px;color:var(--figma-color-text-secondary,#777)}details[open]>summary::before{content:'−'}.step{font-size:10px;color:var(--figma-color-text-secondary,#777);margin-right:8px}.preview{max-width:100%;max-height:155px;display:block;margin:10px auto;border-radius:5px}.selection{padding:10px;border-radius:6px;background:var(--figma-color-bg-secondary,#f5f5f5);margin:10px 0}.selection strong{display:block;margin-bottom:4px}.field{display:block;margin:10px 0}.field>label{display:block;margin-bottom:5px}.role-row{display:grid;grid-template-columns:1fr 32px;gap:6px;align-items:center}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.presets{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:10px 0}.preset{cursor:pointer;border:1px solid var(--figma-color-border,#ddd);background:var(--figma-color-bg,#fff);color:inherit;border-radius:5px;padding:7px 2px;font:inherit;font-size:11px}.preset.active{background:var(--figma-color-bg-selected,#e5f1ff);border-color:var(--figma-color-border-selected,#0d99ff);color:var(--figma-color-text,#222)}button:focus-visible,summary:focus-visible{outline:2px solid var(--figma-color-border-selected,#0d99ff);outline-offset:2px}.tiny{font-size:10px;line-height:1.5}.field-title{font-size:11px;font-weight:600;margin-top:12px}.crop{position:relative;margin:12px auto;max-width:100%;width:max-content;cursor:crosshair;line-height:0}.crop img{max-width:100%;max-height:220px;display:block}.subject{position:absolute;border:2px dashed #fff;box-shadow:0 0 0 1px #0d99ff,inset 0 0 0 1px #0d99ff;border-radius:3px;pointer-events:none}.results{list-style:none;padding:0;margin:6px 0}.results li{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--figma-color-border,#eee)}.results .st{font-weight:600}.results .failed .st{color:var(--figma-color-text-danger,#d92c20)}.results .warning .st{color:var(--figma-color-text-warning,#b86200)}.results ul{margin:2px 0 0;padding-left:16px}.results button{padding:4px 8px;flex-shrink:0}.danger{color:var(--figma-color-text-danger,#d92c20);border-color:currentColor}.subject.core{border:1px solid #fff;box-shadow:0 0 0 1px #f24822;border-radius:2px}.ai-off #ai-fields{display:none}#ai-note.error{color:var(--figma-color-text-danger,#d92c20)}.crop.drawing{cursor:crosshair}.pack{border:1px solid var(--figma-color-border,#ddd);border-radius:6px;padding:8px;margin:8px 0}.pack .presets{margin:6px 0 0}.pack-head{display:flex;gap:8px;align-items:flex-start}.pack-head label{font-weight:600;font-size:11px}.report td{padding:2px 4px;font-size:10px;font-variant-numeric:tabular-nums}.report{width:100%;border-collapse:collapse;margin-top:8px}.over{color:var(--figma-color-text-danger,#b72828)}.cross{position:absolute;width:20px;height:20px;border:2px solid white;border-radius:50%;box-shadow:0 0 0 2px #0d99ff;transform:translate(-50%,-50%);pointer-events:none}.info{padding:10px;border-radius:6px;background:var(--figma-color-bg-secondary,#f5f5f5);font-size:11px;line-height:1.5}.status{font-size:11px;line-height:1.45;margin:0 0 8px;white-space:pre-line}.error{color:var(--figma-color-text-danger,#b72828)}.success{color:var(--figma-color-text-success,#13823b)}.warnings{font-size:11px;line-height:1.6;padding-left:18px;max-height:155px;overflow:auto}textarea{width:100%;font:11px/1.4 monospace;color:inherit;background:var(--figma-color-bg,#fff);border:1px solid var(--figma-color-border,#ddd);border-radius:5px;padding:8px;resize:vertical}#run{flex:1}#cancel{display:none}.actions{display:flex;gap:8px}select,input,textarea{width:100%}[hidden]{display:none!important}.switchrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0}.switchrow label{font-size:11px}#count{font-variant-numeric:tabular-nums}
+
+main{min-height:0}footer{flex-shrink:0}button,input,select,textarea{font:inherit;color:inherit}
+button{border:1px solid var(--figma-color-border,#d7d9de);border-radius:6px;padding:8px 10px;background:var(--figma-color-bg,#fff);cursor:pointer}
+button:hover:not(:disabled){background:var(--figma-color-bg-hover,#f1f3f6)}button:disabled{opacity:.45;cursor:not-allowed}
+#run{background:var(--figma-color-bg-brand,#0d78f2);color:var(--figma-color-text-onbrand,#fff);border-color:transparent;font-weight:600}
+input,select{min-height:33px;border:1px solid var(--figma-color-border,#d7d9de);border-radius:5px;background:var(--figma-color-bg,#fff);padding:6px 8px;min-width:0}
+select{max-width:100%;text-overflow:ellipsis}input[type=color]{height:36px;padding:3px;cursor:pointer}input[type=checkbox]{width:17px;min-height:17px;height:17px;accent-color:var(--figma-color-bg-brand,#0d78f2);flex-shrink:0;cursor:pointer}
+textarea{line-height:1.45;min-height:72px}input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--figma-color-border-selected,#0d99ff);outline-offset:1px}
+</style><script>
+try{window.localStorage.getItem('x')}catch(e){const m=new Map();Object.defineProperty(window,'localStorage',{value:{getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k),clear:()=>m.clear(),key:i=>Array.from(m.keys())[i]??null,get length(){return m.size}},configurable:true})}
+</script></head><body><div id="plugin-root">
+<main>
+<div class="row between"><h1>Banner Adapt</h1><span class="tag" id="tag">1.6 · Локально</span></div>
+<p class="muted">Один мастер. Разные композиции.</p>
+<section class="section">
+<div class="row between"><strong><span class="step">01</span>Мастер-баннер</strong><button id="capture">Взять выделенный</button></div>
+<div id="master" class="selection"><strong>Выдели баннер в Figma</strong><span class="muted">Один фрейм или группа со слоями.</span></div>
+<p id="save-status" class="tiny muted">Настройки сохраняются для каждого мастера.</p><div class="row"><button id="save-settings" disabled>Сохранить настройки</button><button id="reset-settings" disabled title="Вернуть роли, форматы и параметры к исходным">Сбросить настройки</button></div>
+<img id="master-preview" class="preview" hidden alt="Мастер-баннер">
+<div class="field-title">Дополнительные мастера</div>
+<p class="tiny muted">Сделайте вручную, например, горизонтальный мастер 1706×184 или 1200×628. Каждый формат собирается из мастера с самыми близкими пропорциями. Роли слоёв в нём определяются автоматически или берутся из его сохранённых настроек.</p>
+<div id="alt-list"></div>
+<button id="add-alt" disabled>Добавить выделенный мастер</button>
+</section>
+<details class="section" id="roles-section" open><summary><span class="step">02</span>Проверь роли слоёв</summary><p class="tiny muted">При новых пропорциях используются назначенные слои. При сохранении пропорций копируется весь мастер, включая декор.</p><div id="roles"></div>
+<div class="switchrow"><label for="trimLogo">Убрать пустые поля и свечение логотипа</label><input type="checkbox" class="toggle" id="trimLogo" checked></div>
+</details>
+<details class="section" open><summary><span class="step">03</span>Форматы <span class="muted" id="count">25</span></summary>
+<div class="row"><button id="all">Все</button><button id="none">Снять</button><button id="portrait">Вертикальные</button></div>
+<p class="tiny muted">Отметьте площадки — их размеры добавятся в набор, а при экспорте файлы получат нужный формат, вес и имя. Требования площадок сверены 14.10.2026.</p>
+<div id="presets"></div>
+<div class="field"><label>Свои размеры, по одному в строке</label><textarea rows="3" id="custom" placeholder="800x1200&#10;1600x400"></textarea></div>
+<div class="switchrow"><label for="preserveMaster">Сохранять весь дизайн при тех же пропорциях</label><input type="checkbox" class="toggle" id="preserveMaster" checked></div><p class="tiny muted">При тех же пропорциях масштабируется весь мастер. Индивидуальная настройка формата переключает его на адаптивную раскладку. Без неё точная копия сохраняет композицию и только предупреждает о мелком тексте.</p>
+<p class="tiny muted">До 60 размеров за запуск. От 32 до 6000 px.</p></details>
+<details class="section" id="variant-section" open><summary>Настроить и проверить один размер</summary>
+<div class="field"><label for="variant-size">Формат из выбранного набора</label><select id="variant-size"></select></div>
+<div class="switchrow"><label for="variant-enabled">Индивидуальные настройки этого формата</label><input type="checkbox" class="toggle" id="variant-enabled"></div>
+<p class="tiny muted">Включение использует адаптивную раскладку даже при пропорциях мастера. Настройки этого формата имеют приоритет над общими параметрами и AI.</p>
+<div class="two"><div class="field"><label for="variant-focusX">Фокус X, %</label><input type="number" id="variant-focusX" min="0" max="100" value="50"></div><div class="field"><label for="variant-focusY">Фокус Y, %</label><input type="number" id="variant-focusY" min="0" max="100" value="50"></div></div>
+<div class="two"><div class="field"><label for="variant-zoom">Масштаб картинки, %</label><input type="number" id="variant-zoom" min="100" max="500" value="100"></div><div class="field"><label for="variant-headlineScale">Масштаб заголовка, %</label><input type="number" id="variant-headlineScale" min="60" max="140" value="100"></div></div>
+<div class="field"><label for="variant-textPos">Где текст в этом формате</label><select id="variant-textPos"><option value="auto">Авто</option><option value="top">Сверху</option><option value="bottom">Снизу</option><option value="left">Слева</option><option value="right">Справа</option></select></div>
+<div class="field"><label for="variant-imageFit">Масштаб картинки в этом формате</label><select id="variant-imageFit"><option value="auto">Как в общих настройках</option><option value="fill">Заполнять баннер</option><option value="width">По ширине баннера</option><option value="height">По высоте баннера</option><option value="extend">Вписывать объект и заливать</option></select></div>
+<div class="field"><label for="variant-visualSide">Картинка в горизонтальном формате</label><select id="variant-visualSide"><option value="auto">Авто</option><option value="right">Справа</option><option value="left">Слева</option></select></div>
+<p class="tiny muted">Масштаб заголовка задаёт желаемый размер: текст может уменьшиться до установленного минимума, чтобы поместиться.</p>
+<button id="trial" disabled>Проверить этот размер</button>
+<p class="tiny muted">Результат появится в отдельном пробном фрейме. Повторная проверка заменит его, включая ручные правки. Готовые наборы не меняются.</p>
+</details>
+<details class="section" id="batch-section" open><summary>Обновить созданный набор</summary>
+<div class="field"><label for="batch-select">Наборы этого мастера на текущей странице</label><select id="batch-select"><option value="">Создай новый набор в версии 0.6</option></select></div>
+<button id="refresh-batches">Обновить список</button>
+<p class="tiny muted">Выбор набора загрузит его настройки. Обновление заменит содержимое по текущему мастеру и параметрам. Ручные правки останутся в отдельной «Предыдущей версии» рядом. Положение набора сохранится.</p>
+<div class="switchrow"><label for="confirm-update">Заменить содержимое выбранного набора</label><input type="checkbox" id="confirm-update" class="toggle"></div>
+<button id="update" disabled>Обновить выбранный набор</button>
+</details>
+<details class="section" id="export-section" open><summary><span class="step">04</span>Экспорт для площадок</summary>
+<div class="field"><label for="campaign">Название кампании для имён файлов</label><input id="campaign" placeholder="socforum26" maxlength="40"></div>
+<div class="field"><label for="exportFormat">Формат файлов</label><select id="exportFormat"><option value="platform">По требованиям площадки</option><option value="png">Всегда PNG</option><option value="jpg">Всегда JPG</option></select></div>
+<p class="tiny muted">Выгружается набор, выбранный в «Обновить созданный набор», иначе последний созданный или выделенный на холсте. Для каждой отмеченной площадки — своя папка в ZIP, имя «кампания_площадка_ширинаxвысота». Качество JPG подбирается так, чтобы уложиться в лимит веса.</p>
+<button id="export" disabled>Экспортировать набор в ZIP</button>
+<div id="export-report"></div>
+</details>
+<details class="section" id="crop-section" open><summary>Изображение и композиция</summary>
+<div class="field"><label for="imageFit">Масштаб картинки</label><select id="imageFit"><option value="auto">Авто — плагин решает сам</option><option value="fill">Заполнять баннер — по большей стороне, края обрезаются</option><option value="width">По ширине баннера — пропорционально</option><option value="height">По высоте баннера — пропорционально</option><option value="extend">Вписывать объект — свободное место заливается цветом краёв</option></select></div>
+<p id="edge-note" class="tiny muted">«Заполнять баннер»: картинка всегда растягивается на весь формат с сохранением пропорций, без заливки и мягких краёв, лишнее обрезается. «По ширине» / «По высоте»: картинка пропорционально масштабируется точно по ширине или высоте баннера; что не помещается — обрезается, пустое место заливается. «Вписывать объект»: главный объект помещается целиком, остальное заливается цветом краёв картинки с мягким переходом. «Авто»: заливка только если края картинки одного ровного цвета (объект на однотонном фоне).</p>
+<div class="field"><label for="visualMode">Размещение изображения</label><select id="visualMode"><option value="auto">Авто — как в мастере</option><option value="background">Фон на весь баннер</option><option value="block">Отдельный блок</option></select></div>
+<p id="image-mode-note" class="tiny muted">Картинка, перекрывающая весь мастер, масштабируется как фон без искажения пропорций. При смене формата края обрезаются.</p>
+<p class="tiny muted">Плагин сам находит главный объект и ставит его в свободную от текста зону каждого формата. Если рамка легла не туда — обведи объект мышью или просто нажми на него.</p>
+<div id="crop" class="crop" hidden><img id="visual-preview" alt="Обведите главный объект" draggable="false"><span id="subject-box" class="subject" hidden></span><span id="core-box" class="subject core" hidden></span><span id="cross" class="cross"></span></div>
+<div class="row between"><span id="subject-note" class="tiny muted">Главный объект: ищем…</span><button id="subject-auto" type="button">Найти заново</button></div>
+<div class="two"><div class="field"><label>Фокус X, %</label><input type="number" id="focusX" value="50" min="0" max="100"></div><div class="field"><label>Фокус Y, %</label><input type="number" id="focusY" value="50" min="0" max="100"></div></div>
+<div class="two"><div class="field"><label>Масштаб, %</label><input type="number" id="zoom" value="100" min="100" max="500"></div><div class="field"><label>Изображение</label><select id="fit"><option value="cover">Заполнить область</option><option value="contain">Показать целиком</option></select></div></div>
+<div class="field"><label for="placement">Расстановка текста</label><select id="placement"><option value="auto">Авто — текст не закрывает объект</option><option value="master">Как в мастере — текст там же, где в мастере</option><option value="fixed">Всегда по основной схеме</option></select></div>
+<p class="tiny muted">«Авто»: плагин примеряет несколько схем (текст сверху, снизу, слева, справа) и выбирает ту, где текст не закрывает объект, лежит на спокойном фоне без деталей и хорошо читается. «Как в мастере»: текст всегда в той же части баннера, что и в мастере. Для отдельного формата положение можно задать в «Настроить и проверить один размер». Выбранная схема видна в имени баннера.</p>
+<div class="field"><label>В горизонтальных форматах</label><select id="visualSide"><option value="auto">Авто — по свободному месту</option><option value="right">Изображение справа</option><option value="left">Изображение слева</option></select></div>
+
+<div class="switchrow"><label for="fade">Мягкие края изображения</label><input type="checkbox" class="toggle" id="fade" checked></div>
+<p class="tiny muted">Для отдельного блока: масштаб 100% + «Показать целиком» сохраняет всё изображение. Фон всегда заполняет баннер с обрезкой краёв.</p></details>
+<details class="section ai-off" id="ai-section"><summary>AI-кадрирование картинки · отдельная настройка</summary>
+<p class="tiny muted">AI отвечает только за картинку: находит главный объект и его самую узнаваемую часть и решает, что сохранить в полосах, горизонталях, квадратах и вертикалях. Тексты, раскладку и экспорт по-прежнему делает плагин. Один запрос на мастер — около 0,5–1 тыс. токенов. Ответ сохраняется в мастере: повторные запуски и коллеги по файлу токены не тратят.</p>
+<div class="switchrow"><label for="ai-enabled">Включить AI-кадрирование</label><input type="checkbox" class="toggle" id="ai-enabled"></div>
+<div id="ai-fields">
+<div class="field"><label for="ai-provider">Подключение</label><select id="ai-provider"><optgroup label="Без API — по подписке"><option value="bridge">Подписка Claude или ChatGPT — через мост</option><option value="chat">Вручную через чат — без установки</option></optgroup><optgroup label="По ключу API"><option value="anthropic">Claude (Anthropic)</option><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter — любая модель</option><option value="custom">Свой сервер или прокси (OpenAI-совместимый)</option></optgroup></select></div>
+<div id="ai-bridge-help" class="info" hidden>Мост передаёт картинку в Claude Code (подписка Claude Pro/Max) или Codex (подписка ChatGPT) на вашем компьютере. Расход идёт из лимитов подписки, ключ API не нужен.<br>1. Установите Node.js 18+ и Claude Code (<code>claude</code>) или Codex (<code>codex</code>), войдите в свой аккаунт.<br>2. В Терминале: <code>node путь/к/плагину/bridge/banner-adapt-bridge.mjs</code>. Для ChatGPT добавьте <code>--engine codex</code>.<br>3. Вставьте «Код моста» из окна Терминала в поле ниже. Окно Терминала не закрывайте, пока работаете.</div>
+<div id="ai-chat" hidden><p class="tiny muted">Работает с обычной подпиской ChatGPT или Claude, ничего не нужно устанавливать. Один раз на мастер: задание и картинку — в чат, ответ — сюда. Ответ сохранится в мастере.</p>
+<div class="row"><button id="ai-chat-prompt" type="button">1. Скопировать задание</button><button id="ai-chat-image" type="button">2. Картинка для чата</button></div>
+<textarea id="ai-chat-prompt-text" rows="4" readonly hidden aria-label="Задание для чата"></textarea>
+<div id="ai-chat-image-box" hidden><img id="ai-chat-img" class="preview" alt="Картинка мастера для чата"><div class="row"><button id="ai-chat-copy" type="button">Скопировать картинку</button><button id="ai-chat-download" type="button">Скачать JPG</button></div><p class="tiny muted">Вставьте или перетащите картинку в чат вместе с заданием.</p></div>
+<div class="field"><label for="ai-chat-reply">3. Ответ чата (JSON)</label><textarea id="ai-chat-reply" rows="3" placeholder='{"label":"…","subject":[…],"core":[…],…}'></textarea></div>
+<button id="ai-chat-apply" type="button">Применить ответ</button></div>
+<div class="field" id="ai-endpoint-row" hidden><label for="ai-endpoint">Адрес …/chat/completions</label><input id="ai-endpoint" placeholder="http://localhost:11434/v1/chat/completions" maxlength="300"></div>
+<div class="two" id="ai-mk-row"><div class="field"><label for="ai-model">Модель</label><input id="ai-model" maxlength="100"></div><div class="field"><label for="ai-key" id="ai-key-label">Ключ API</label><input id="ai-key" type="password" autocomplete="off" maxlength="400" placeholder="вставьте ключ"></div></div>
+<p class="tiny muted">Ключ хранится только в Figma на этом компьютере и в файл не попадает. В модель уходит одна картинка мастера без текстов и логотипа, 512 px по длинной стороне. Если рамка объекта задана вручную, AI её не меняет.</p>
+<div class="row between"><span id="ai-note" class="tiny muted">AI-кадрирование выключено.</span><button id="ai-run" type="button">Разобрать заново</button></div>
+</div></details>
+<details class="section"><summary>Цвет и текст</summary><div class="field"><label for="background">Фон ресайзов</label><input type="color" id="background" value="#081226"></div>
+<div class="field"><label for="fillColor">Чем заливать место, не закрытое картинкой</label><select id="fillColor"><option value="edge">Цветом краёв картинки (авто)</option><option value="custom">Цветом «Фон ресайзов»</option></select></div><p class="tiny muted">Заливка видна, только если картинка не закрывает баннер целиком: режимы «Вписывать объект», «По ширине» и «По высоте», а также «Авто» для картинки на однотонном фоне. При выборе цвета этот пункт переключается на «Фон ресайзов».</p>
+<div class="field"><label for="minFont">Минимальный размер текста, px</label><input type="number" id="minFont" value="12" min="6" max="48"></div>
+<div class="switchrow"><label for="enforceMinFont">Не уменьшать заголовок ниже минимума</label><input type="checkbox" class="toggle" id="enforceMinFont" checked></div><p class="tiny muted">В адаптивной раскладке заголовок сохранит минимум. Если места мало, баннер получит отметку ⚠. Для остальных текстов и точной копии мастера это порог предупреждения.</p>
+<div class="switchrow"><label for="scrim">Подложка под текст, если он плохо читается на фоне</label><input type="checkbox" class="toggle" id="scrim" checked></div><p class="tiny muted">Плагин проверяет контраст текста с фоном в каждом формате. Если светлый текст попал на светлый участок, под текстом появляется мягкий градиент в цвет теней картинки. Без подложки такие места попадут в отчёт.</p>
+<div class="switchrow"><label for="outlineMissing">Недоступные шрифты переводить в кривые</label><input type="checkbox" class="toggle" id="outlineMissing" checked></div>
+<p class="tiny muted">Доступные шрифты и текст сохраняются. Для текста в кривых перенос строк недоступен. Исходный мастер не меняется.</p></details>
+<details class="section"><summary>Старый режим: AI-план по форматам через чат</summary>
+<p class="info">Работает с твоим чатом в ChatGPT, Claude или Gemini. Скопируй задание, приложи мастер-баннер и верни JSON-ответ сюда. Для кадрирования картинки удобнее раздел «AI-кадрирование картинки» — там же есть режим через чат без API.</p>
+<button id="prompt">Подготовить и скопировать задание</button>
+<textarea id="prompt-text" rows="5" readonly hidden aria-label="Задание для нейросети"></textarea>
+<div class="field"><label>JSON-ответ нейросети</label><textarea rows="3" id="aiPlan" placeholder='{"version":1,"variants":[]}'></textarea></div>
+<p class="tiny muted">AI может предложить фокус, масштаб изображения, его сторону и масштаб заголовка для каждого размера. Решения проверяются перед созданием.</p></details>
+<details id="report" class="section" hidden><summary>Результаты проверки</summary><p id="result-summary" class="tiny"></p><ul id="results" class="results"></ul><p id="general-title" class="tiny muted" hidden>Общие замечания</p><ul id="warnings" class="warnings"></ul><p class="tiny muted">«Пройдено» значит только, что автоматические проверки не нашли нарушений. Композицию всё равно стоит посмотреть.</p></details>
+</main>
+<footer><p class="tiny muted" style="margin:0 0 6px">Автор: Alexey Lyamin · <a href="#" id="author-link">портфолио</a></p><p id="status" class="status" role="status" aria-live="polite">Выдели мастер-баннер, чтобы начать.</p><div class="actions"><button id="run" type="submit" disabled>Создать ресайзы</button><button id="cancel">Отменить</button></div></footer>
+</div><script>
+const $=id=>document.getElementById(id),post=message=>parent.postMessage({pluginMessage:message},'*');
+const keys=['logo','headline','date','body','cta','visual'];
+const labels={logo:'Логотип',headline:'Заголовок',date:'Дата / надпись',body:'Дополнительный текст',cta:'Кнопка целиком',visual:'Изображение / иллюстрация'};
+let aiCfg={enabled:false,provider:'anthropic',model:'',endpoint:'',key:''},sceneHash='',sceneAi=null,savedAi=null,aiWaiters=new Map(),aiCfgTimer=null,aiError='';
+let master=null,presets=[],selected=new Set(),running=false,visualId='',urls={},saveTimer=null,restoring=false,variantOverrides={},editingKey='',sizeSignature='',subject=null,subjectSource='auto',sceneInfo=null,dragStart=null,alternates=[],platforms=[],activePlatforms=new Set(['own']),lastOutputId='',exportJob=null;
+const variantFields=['focusX','focusY','zoom','headlineScale','visualSide','textPos','imageFit'];
+const val=id=>$(id).value??$(id).getAttribute('value')??'';
+const bool=id=>$(id).checked;
+function disable(el,yes){el.disabled=yes;el.toggleAttribute('disabled',yes)}
+function setStatus(text,kind=''){ $('status').textContent=text;$('status').className='status '+kind; }
+function getSizes(){let sizes=presets.filter(s=>selected.has(s.join('x')));const raw=String(val('custom')).trim();if(raw){for(const line of raw.split(/[\n;,]+/)){if(!line.trim())continue;const match=line.trim().match(/^(\d+)\s*[xх×*]\s*(\d+)$/i);if(!match)throw Error('Размер «'+line+'»: используйте запись 800x1200.');sizes.push([+match[1],+match[2]])}}const unique=[...new Map(sizes.map(s=>[s.join('x'),s])).values()];if(unique.length>60)throw Error('Максимум 60 форматов за запуск.');if(unique.some(s=>s.some(v=>v<32||v>6000)))throw Error('Каждая сторона: от 32 до 6000 px.');return unique;}
+function refresh(){let sizeCount=0,valid=true;try{sizeCount=getSizes().length}catch(e){valid=false;setStatus(e.message,'error')}$('count').textContent=sizeCount;$('run').textContent='Создать '+sizeCount+' ресайзов';disable($('run'),!master||!valid||!sizeCount||running);disable($('capture'),running);disable($('save-settings'),!master||!valid||!sizeCount||running);disable($('reset-settings'),!master||running);disable($('update'),!master||!valid||!sizeCount||running||!val('batch-select')||!bool('confirm-update'));disable($('refresh-batches'),!master||running);disable($('add-alt'),!master||running||alternates.length>=3);disable($('export'),!master||running);for(const el of document.querySelectorAll('.pack-toggle'))el.disabled=running;renderAlternates();for(const el of document.querySelectorAll('main input, main select, main textarea'))el.disabled=running;for(const el of document.querySelectorAll('.preset')){el.classList.toggle('active',selected.has(el.dataset.size));el.setAttribute('aria-pressed',selected.has(el.dataset.size)?'true':'false');el.disabled=running;}renderVariantPicker();disable($('trial'),!master||!valid||!sizeCount||running);disable($('variant-enabled'),running||!editingKey);for(const k of variantFields)disable($('variant-'+k),running||!editingKey||!bool('variant-enabled'));aiStatus();}
+function aspectLabel(w,h){const r=w/h;return r>=1.55?'горизонтальный':r>.88?'квадратный':'вертикальный';}
+// Which master each selected format will be built from (closest proportions; ties stay with the main master).
+function sourceCounts(){let sizes=[];try{sizes=getSizes()}catch(_e){}const all=[{id:master?.id,width:master?.width,height:master?.height},...alternates],count={};
+  for(const [w,h] of sizes){let best=all[0];const d=a=>Math.abs(Math.log((w/h)/(a.width/a.height)));for(const a of all)if(d(a)<d(best)-1e-9)best=a;count[best.id]=(count[best.id]||0)+1;}return count;}
+function renderAlternates(){const root=$('alt-list');if(!root)return;root.replaceChildren();if(!master)return;const count=sourceCounts();
+  for(const a of alternates){const row=document.createElement('div');row.className='selection row between';const t=document.createElement('span');t.className='tiny';
+    const state=a.info?(a.info.edge?' · ровный фон':''):' · анализ…';t.textContent=a.name+' · '+a.width+'×'+a.height+' · '+aspectLabel(a.width,a.height)+' · форматов: '+(count[a.id]||0)+state;
+    const del=document.createElement('button');del.textContent='×';del.title='Убрать мастер';del.disabled=running;del.addEventListener('click',()=>{alternates=alternates.filter(x=>x.id!==a.id);refresh();queueSave();});row.append(t,del);root.append(row);}
+  if(alternates.length){const n=document.createElement('p');n.className='tiny muted';n.textContent='Из основного мастера: форматов '+(count[master.id]||0)+'.';root.append(n);}}
+function sizeButton(sz){const b=document.createElement('button');b.className='preset';b.dataset.size=sz.join('x');b.textContent=sz.join(' × ');b.addEventListener('click',()=>{selected.has(b.dataset.size)?selected.delete(b.dataset.size):selected.add(b.dataset.size);refresh()});return b;}
+function kb(v){return v>=1024?(v/1024).toFixed(v%1024?1:0)+' МБ':v+' КБ';}
+function renderPresets(){const root=$('presets');root.replaceChildren();
+  for(const p of platforms){const box=document.createElement('div');box.className='pack';const head=document.createElement('div');head.className='pack-head';
+    const cb=document.createElement('input');cb.type='checkbox';cb.id='pack-'+p.id;cb.className='pack-toggle';cb.checked=activePlatforms.has(p.id);
+    const lab=document.createElement('label');lab.htmlFor=cb.id;lab.textContent=p.name+' · '+p.sizes.length+' разм. · '+(p.maxKB?'до '+kb(p.maxKB):'без лимита')+' · '+p.format.toUpperCase();
+    cb.addEventListener('change',()=>{if(cb.checked){activePlatforms.add(p.id);for(const z of p.sizes)selected.add(z.join('x'));}else{activePlatforms.delete(p.id);const keep=new Set(platforms.filter(q=>activePlatforms.has(q.id)).flatMap(q=>q.sizes.map(z=>z.join('x'))));for(const z of p.sizes){const k=z.join('x');if(!keep.has(k))selected.delete(k);}}refresh();queueSave();});
+    head.append(cb,lab);const note=document.createElement('p');note.className='tiny muted';note.style.margin='4px 0 0';note.textContent=p.note;
+    const grid=document.createElement('div');grid.className='presets';for(const z of p.sizes)grid.append(sizeButton(z));box.append(head,note,grid);root.append(box);}
+  refresh()}
+function roles(){return Object.fromEntries(keys.map(k=>[k,String(val('role-'+k))]));}
+function setRoleOptions(data){const root=$('roles');root.replaceChildren();keys.forEach(k=>{const field=document.createElement('div'),label=document.createElement('label');field.className='field';label.textContent=labels[k];label.htmlFor='role-'+k;const row=document.createElement('div');row.className='role-row';const select=document.createElement('select');select.id='role-'+k;const empty=document.createElement('option');empty.value='';empty.textContent='Не использовать';select.append(empty);data.candidates.forEach(c=>{const option=document.createElement('option');option.value=c.id;option.textContent=c.name+' · '+c.width+'×'+c.height;select.append(option)});select.value=data.roles[k]||'';select.setAttribute('value',select.value);const inspect=document.createElement('button');inspect.textContent='↗';inspect.title='Показать слой на холсте';inspect.addEventListener('click',()=>{const id=val('role-'+k);if(id)post({type:'select-layer',id})});select.addEventListener('change',()=>{if(k==='visual'){subject=null;subjectSource='auto';}requestVisual()});row.append(select,inspect);field.append(label,row);root.append(field)});}
+function requestVisual(){lastMode=effectiveMode();const id=String(val('role-visual'));visualId=id;$('crop').hidden=true;sceneInfo=null;if(id){if(subjectSource==='auto')$('subject-note').textContent='Главный объект: ищем…';else subjectLabel();post({type:'visual-preview',id,visualMode:effectiveMode(),roles:roles()});}else $('subject-note').textContent='Изображение не назначено.';}
+function cross(){ $('cross').style.left=clampNum(val('focusX'),0,100)+'%';$('cross').style.top=clampNum(val('focusY'),0,100)+'%';drawSubject();}
+function drawSubject(){const b=$('subject-box'),c=$('core-box'),core=subjectSource==='ai'&&sceneAi?.core;c.hidden=!core;if(core){c.style.left=core.x*100+'%';c.style.top=core.y*100+'%';c.style.width=core.w*100+'%';c.style.height=core.h*100+'%';}if(!subject){b.hidden=true;return;}b.hidden=false;b.style.left=subject.x*100+'%';b.style.top=subject.y*100+'%';b.style.width=subject.w*100+'%';b.style.height=subject.h*100+'%';}
+function subjectLabel(){$('subject-note').textContent=subject?(subjectSource==='user'?'Главный объект: задан вручную.':subjectSource==='saved'?'Главный объект: из сохранённых настроек.':subjectSource==='ai'?'Главный объект: определён AI'+(sceneAi?.label?' — «'+sceneAi.label+'»':'')+'.':'Главный объект: найден автоматически.'):'Объект не найден — используется точка фокуса.';if(sceneInfo?.edge)$('subject-note').textContent+=' Фон по краям ровный — в узких форматах он будет достраиваться.';aiStatus();}
+function setSubject(s,source){subject=s?{x:+s.x.toFixed(4),y:+s.y.toFixed(4),w:+s.w.toFixed(4),h:+s.h.toFixed(4)}:null;subjectSource=source;if(subject){$('focusX').value=Math.round((subject.x+subject.w/2)*100);$('focusY').value=Math.round((subject.y+subject.h/2)*100);if(editingKey&&!bool('variant-enabled'))renderVariantFields();}cross();subjectLabel();}
+// Scene analysis: pixels (RGBA, N×N) → luminance grid, shadow colour and the most salient region (main object).
+function sceneStats(px,N){
+  const n=N*N,lum=new Float32Array(n),lin=new Float32Array(n),chroma=new Float32Array(n);
+  const toLin=v=>v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);
+  for(let i=0;i<n;i++){const r=px[i*4]/255,g=px[i*4+1]/255,b=px[i*4+2]/255;lum[i]=.2126*r+.7152*g+.0722*b;lin[i]=.2126*toLin(r)+.7152*toLin(g)+.0722*toLin(b);chroma[i]=Math.max(r,g,b)-Math.min(r,g,b);}
+  // 32×32 linear luminance grid for contrast checks.
+  const G=32,grid=[];for(let gy=0;gy<G;gy++)for(let gx=0;gx<G;gx++){let s=0,c=0;const x0=Math.floor(gx*N/G),x1=Math.floor((gx+1)*N/G),y0=Math.floor(gy*N/G),y1=Math.floor((gy+1)*N/G);for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){s+=lin[y*N+x];c++;}grid.push(Math.round(s/Math.max(1,c)*1000)/1000);}
+  // Shadow colour: mean of the darkest 15% of pixels; used for the text scrim so it matches the scene.
+  const order=Array.from(lum.keys()).sort((a,b)=>lum[a]-lum[b]).slice(0,Math.max(1,Math.round(n*.15)));
+  const avg=k=>Math.round(order.reduce((s,i)=>s+px[i*4+k],0)/order.length);
+  const shade='#'+[0,1,2].map(k=>avg(k).toString(16).padStart(2,'0')).join('');
+  // On a plain backdrop the object is simply everything that differs from it; otherwise use saliency.
+  const edge=edgeColour(px,N);
+  // Detail map: edges and texture of the picture; text over busy areas (columns, patterns) is hard to read.
+  const bl=blur(lum,N,1),gr=new Float32Array(n);for(let y=1;y<N-1;y++)for(let x=1;x<N-1;x++){const i=y*N+x;gr[i]=Math.hypot(bl[i+1]-bl[i-1],bl[i+N]-bl[i-N]);}
+  const top=Math.max(1e-6,pct(gr,.95)),bz=blur(gr.map(v=>Math.min(1,v/top)),N,2),busy=[];
+  for(let gy=0;gy<G;gy++)for(let gx=0;gx<G;gx++){let s=0,c=0;for(let y=Math.floor(gy*N/G);y<Math.floor((gy+1)*N/G);y++)for(let x=Math.floor(gx*N/G);x<Math.floor((gx+1)*N/G);x++){s+=bz[y*N+x];c++;}busy.push(Math.round(Math.min(1,s/Math.max(1,c))*1000)/1000);}
+  return {luma:grid,busy,shade,edge,subject:(edge&&objectBox(px,N,edge))||salientBox(lum,chroma,N)};
+}
+function objectBox(px,N,hex){
+  const c=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)),xs=[],ys=[];
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){const i=(y*N+x)*4;if(Math.max(Math.abs(px[i]-c[0]),Math.abs(px[i+1]-c[1]),Math.abs(px[i+2]-c[2]))>40){xs.push(x);ys.push(y);}}
+  if(xs.length<N*N*.02)return null;xs.sort((a,b)=>a-b);ys.sort((a,b)=>a-b);
+  const q=(v,p)=>v[Math.min(v.length-1,Math.floor(p*v.length))],pad=.02;
+  const x=Math.max(0,q(xs,.02)/N-pad),y=Math.max(0,q(ys,.02)/N-pad),w=Math.min(1,(q(xs,.98)+1)/N+pad)-x,h=Math.min(1,(q(ys,.98)+1)/N+pad)-y;
+  return w*h>.95?null:{x:+x.toFixed(4),y:+y.toFixed(4),w:+w.toFixed(4),h:+h.toFixed(4)};
+}
+// Flat backdrop: if at least three sides of the picture are one colour (an object shot on a plain backdrop,
+// possibly touching one edge), the plugin may extend the picture with that colour. Median, so glows do not tint it.
+function edgeColour(px,N){
+  const d=Math.max(2,Math.round(N*.04)),sides=[[],[],[],[]];
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){const i=y*N+x;if(y<d)sides[0].push(i);if(x>=N-d)sides[1].push(i);if(y>=N-d)sides[2].push(i);if(x<d)sides[3].push(i);}
+  const med=ids=>[0,1,2].map(k=>{const v=ids.map(i=>px[i*4+k]).sort((a,b)=>a-b);return v[v.length>>1];});
+  const all=med([].concat(...sides)),near=(i,m)=>Math.max(...[0,1,2].map(k=>Math.abs(px[i*4+k]-m[k])))<=26;
+  const flat=sides.filter(ids=>ids.filter(i=>near(i,all)).length/ids.length>=.75);
+  if(flat.length<3)return null;
+  return '#'+med([].concat(...flat)).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
+}
+function blur(a,N,r){const t=new Float32Array(a.length),o=new Float32Array(a.length);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){let s=0,c=0;for(let k=-r;k<=r;k++){const xx=x+k;if(xx>=0&&xx<N){s+=a[y*N+xx];c++;}}t[y*N+x]=s/c;}
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){let s=0,c=0;for(let k=-r;k<=r;k++){const yy=y+k;if(yy>=0&&yy<N){s+=t[yy*N+x];c++;}}o[y*N+x]=s/c;}return o;}
+function pct(a,p){const s=Float32Array.from(a).sort();return s[Math.min(s.length-1,Math.floor(p*(s.length-1)))];}
+function normalize(a){const lo=pct(a,.05),hi=pct(a,.99)-lo||1e-6;return a.map(v=>Math.max(0,Math.min(1,(v-lo)/hi)));}
+function salientBox(lum,chroma,N){
+  const med=pct(chroma,.5),c=normalize(chroma.map(v=>Math.abs(v-med)));
+  const bl=blur(lum,N,1),grad=new Float32Array(N*N);
+  for(let y=1;y<N-1;y++)for(let x=1;x<N-1;x++){const i=y*N+x;const gx=bl[i+1-N]+2*bl[i+1]+bl[i+1+N]-bl[i-1-N]-2*bl[i-1]-bl[i-1+N],gy=bl[i+N-1]+2*bl[i+N]+bl[i+N+1]-bl[i-N-1]-2*bl[i-N]-bl[i-N+1];grad[i]=Math.hypot(gx,gy);}
+  const e=normalize(blur(grad,N,1));let S=new Float32Array(N*N);for(let i=0;i<N*N;i++)S[i]=.6*c[i]+.4*e[i];S=blur(blur(S,N,2),N,1);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){const u=x/(N-1)-.5,v=y/(N-1)-.5;S[y*N+x]*=(1-.7*(u*u+v*v))*(x<2||y<2||x>N-3||y>N-3?0:1);}
+  let mean=0;for(const v of S)mean+=v;mean/=S.length;let sd=0;for(const v of S)sd+=(v-mean)**2;sd=Math.sqrt(sd/S.length);
+  const t=mean+1.5*sd,label=new Int32Array(N*N).fill(-1);let best=null;
+  for(let i=0;i<N*N;i++){if(S[i]<=t||label[i]>=0)continue;const stack=[i],pix=[];label[i]=i;let mass=0;
+    while(stack.length){const j=stack.pop(),x=j%N;mass+=S[j];pix.push(j);
+      for(const k of [j-1,j+1,j-N,j+N]){if(k<0||k>=N*N||label[k]>=0||S[k]<=t)continue;if((k===j-1&&x===0)||(k===j+1&&x===N-1))continue;label[k]=i;stack.push(k);}}
+    if(!best||mass>best.mass)best={mass,pix};}
+  if(!best)return null;
+  // Mass-weighted 6–94% extent: soft shadows and reflections at the fringe do not stretch the box.
+  const q=(coord,lo,hi)=>{const v=best.pix.map(j=>[coord(j),S[j]]).sort((a,b)=>a[0]-b[0]);let acc=0,a=v[0][0],b=v[v.length-1][0];const tot=best.mass;let fa=false;for(const [c,m] of v){acc+=m;if(!fa&&acc>=tot*lo){a=c;fa=true;}if(acc>=tot*hi){b=c;break;}}return [a,b];};
+  const [bx0,bx1]=q(j=>j%N,.06,.94),[by0,by1]=q(j=>(j/N)|0,.06,.94);
+  const pad=.04,x=Math.max(0,bx0/N-pad),y=Math.max(0,by0/N-pad),w=Math.min(1,(bx1+1)/N+pad)-x,h=Math.min(1,(by1+1)/N+pad)-y;
+  // A "subject" covering most of the picture is no subject: fall back to the focus point.
+  if(w*h>.6||w<.04||h<.04)return null;
+  return {x:+x.toFixed(4),y:+y.toFixed(4),w:+w.toFixed(4),h:+h.toFixed(4)};
+}
+
+async function analyzeScene(bytes){try{const url=URL.createObjectURL(new Blob([new Uint8Array(bytes)],{type:'image/png'}));const img=new Image();await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src=url});const N=96,c=document.createElement('canvas');c.width=N;c.height=N;const ctx=c.getContext('2d');if(!ctx)return null;ctx.drawImage(img,0,0,N,N);URL.revokeObjectURL(url);return sceneStats(ctx.getImageData(0,0,N,N).data,N);}catch(e){return null;}}
+function clampNum(v,a,b){return Math.max(a,Math.min(b,Number(v)||0))}
+function stashVariant(){
+  if(!editingKey||!bool('variant-enabled'))return;
+  const out={preserveMaster:false};
+  for(const k of variantFields){const el=$('variant-'+k);if(k==='visualSide'||k==='textPos'||k==='imageFit'){out[k]=el.value;continue;}if(el.value===''||!el.checkValidity())throw Error('Проверьте параметр «'+el.previousElementSibling.textContent+'» для '+editingKey);out[k]=Number(el.value)/(k==='headlineScale'?100:1);}
+  variantOverrides[editingKey]=out;
+}
+function renderVariantFields(){
+  const own=variantOverrides[editingKey];$('variant-enabled').checked=!!own;
+  const base={focusX:Number(val('focusX')),focusY:Number(val('focusY')),zoom:Number(val('zoom')),headlineScale:1,visualSide:val('visualSide'),textPos:'auto',imageFit:'auto'},v={...base,...(own||{})};
+  for(const k of variantFields)$('variant-'+k).value=String(k==='headlineScale'?Math.round(v[k]*100):v[k]);
+}
+function renderVariantPicker(){
+  let sizes=[];try{sizes=getSizes()}catch(_e){}
+  const signature=sizes.map(s=>s.join('x')).join(',');if(signature===sizeSignature)return;sizeSignature=signature;
+  const root=$('variant-size');root.replaceChildren();for(const size of sizes){const op=document.createElement('option');op.value=size.join('x');op.textContent=size.join(' × ');root.append(op);}
+  editingKey=sizes.some(s=>s.join('x')===editingKey)?editingKey:(sizes[0]?.join('x')||'');root.value=editingKey;renderVariantFields();
+}
+function selectedOverrides(){stashVariant();const result={};for(const size of getSizes()){const key=size.join('x');if(variantOverrides[key])result[key]=variantOverrides[key];}return result;}
+function options(){return {enforceMinFont:bool('enforceMinFont'),variantOverrides:selectedOverrides(),preserveMaster:bool('preserveMaster'),visualMode:String(val('visualMode')),background:String(val('background')).slice(0,7),fit:String(val('fit')),focusX:Number(val('focusX')),focusY:Number(val('focusY')),zoom:Number(val('zoom')),minFont:Number(val('minFont')),visualSide:String(val('visualSide')),placement:String(val('placement')),fade:bool('fade'),trimLogo:bool('trimLogo'),outlineMissing:bool('outlineMissing'),aiPlan:String(val('aiPlan')),scrim:bool('scrim'),useAi:aiOn()&&subjectSource!=='user',aiScene:sceneAi,subjectManual:subjectSource==='user'&&!!subject,subject,luma:sceneInfo?.luma||null,busy:sceneInfo?.busy||null,shade:sceneInfo?.shade||null,edge:sceneInfo?.edge||null,imageFit:String(val('imageFit')),fillColor:String(val('fillColor')),extend:val('imageFit')!=='fill',platforms:[...activePlatforms],campaign:String(val('campaign')),alternates:alternates.map(a=>({id:a.id,subject:a.subject||null,luma:a.info?.luma||null,busy:a.info?.busy||null,shade:a.info?.shade||null,edge:a.info?.edge||null,aiScene:a.ai||null}))};}
+const defaults={campaign:'',exportFormat:'platform',imageFit:'auto',fillColor:'edge',scrim:true,enforceMinFont:true,preserveMaster:true,visualMode:'auto',fit:'cover',focusX:50,focusY:50,zoom:100,minFont:12,visualSide:'auto',placement:'auto',fade:true,trimLogo:true,outlineMissing:true,aiPlan:''};
+function applySettings(saved){
+  alternates=[];variantOverrides=JSON.parse(JSON.stringify(saved?.options?.variantOverrides||{}));editingKey='';sizeSignature='!';
+  const opts={...defaults,background:master.background,...(saved?.options||{})};if(saved?.options&&saved.options.imageFit===undefined)opts.imageFit=saved.options.extend===false?'fill':'auto';
+  for(const [k,v]of Object.entries(opts)){const el=$(k);if(!el)continue;if(el.type==='checkbox')el.checked=!!v;else el.value=String(v);}
+  const sizes=saved?.sizes||presets,known=new Set(presets.map(s=>s.join('x')));selected=new Set(sizes.map(s=>s.join('x')).filter(k=>known.has(k)));$('custom').value=sizes.filter(s=>!known.has(s.join('x'))).map(s=>s.join('x')).join('\n');
+  if(saved?.roles)for(const k of keys)$('role-'+k).value=saved.roles[k]||'';
+  activePlatforms=new Set(Array.isArray(saved?.options?.platforms)?saved.options.platforms:['own']);for(const el of document.querySelectorAll('.pack-toggle'))el.checked=activePlatforms.has(el.id.slice(5));
+  subject=saved?.options?.subject||null;subjectSource=subject?'saved':'auto';savedAi=saved?.options?.aiScene||null;sceneAi=null;sceneHash='';
+  if(subject&&saved?.options?.subjectManual)subjectSource='user';else if(subject&&savedAi&&sameBox(subject,savedAi.subject))subjectSource='ai';
+  cross();refresh();
+}
+function saveNow(){
+  clearTimeout(saveTimer);if(!master||running||restoring)return;
+  try{const sizes=getSizes();if(!sizes.length)throw Error('выберите форматы');post({type:'save-settings',masterId:master.id,roles:roles(),sizes,options:options()});$('save-status').textContent='Сохраняем настройки…';}
+  catch(e){$('save-status').textContent='Настройки не сохранены: '+e.message;}
+}
+function queueSave(){if(!master||running||restoring)return;clearTimeout(saveTimer);$('save-status').textContent='Есть изменения…';saveTimer=setTimeout(saveNow,450);}
+function renderBatches(items,selectedId){const old=selectedId===undefined?val('batch-select'):selectedId,root=$('batch-select');root.replaceChildren();const empty=document.createElement('option');empty.value='';empty.textContent=items.length?'Выберите набор':'Нет связанных наборов — создайте новый';root.append(empty);for(const item of items){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;root.append(option);}root.value=old||'';$('confirm-update').checked=false;refresh();}
+$('save-settings').addEventListener('click',saveNow);
+// Reset needs a second click within 4 seconds (Figma panels cannot show confirm dialogs).
+let resetArmed=null;
+$('reset-settings').addEventListener('click',()=>{if(!master||running)return;const b=$('reset-settings');
+  if(!resetArmed){b.textContent='Точно сбросить? Нажмите ещё раз';b.classList.add('danger');resetArmed=setTimeout(()=>{resetArmed=null;b.textContent='Сбросить настройки';b.classList.remove('danger');},4000);return;}
+  clearTimeout(resetArmed);resetArmed=null;b.textContent='Сбросить настройки';b.classList.remove('danger');clearTimeout(saveTimer);
+  sceneAi=null;savedAi=null;setStatus('Сбрасываем настройки мастера…');post({type:'reset-settings',masterId:master.id});});
+$('add-alt').addEventListener('click',()=>post({type:'add-alternate'}));
+$('author-link').addEventListener('click',e=>{e.preventDefault();post({type:'open-link'});});
+$('refresh-batches').addEventListener('click',()=>post({type:'list-batches'}));
+$('batch-select').addEventListener('change',()=>{clearTimeout(saveTimer);$('confirm-update').checked=false;refresh();if(val('batch-select'))post({type:'load-batch',batchId:val('batch-select')});});
+$('confirm-update').addEventListener('change',refresh);
+$('variant-size').addEventListener('change',()=>{try{stashVariant();editingKey=val('variant-size');renderVariantFields();refresh();}catch(e){$('variant-size').value=editingKey;setStatus(e.message,'error');}});
+$('variant-enabled').addEventListener('change',()=>{if(!editingKey)return;if(bool('variant-enabled')){variantOverrides[editingKey]={focusX:Number(val('focusX')),focusY:Number(val('focusY')),zoom:Number(val('zoom')),headlineScale:1,visualSide:val('visualSide'),textPos:'auto',imageFit:'auto',preserveMaster:false};}else delete variantOverrides[editingKey];renderVariantFields();refresh();queueSave();});
+for(const k of variantFields)$('variant-'+k).addEventListener('input',()=>{try{stashVariant()}catch(e){setStatus(e.message,'error')}});
+$('trial').addEventListener('click',()=>{try{if(running||!master||!editingKey)return;const opts=options(),sizes=getSizes(),aiNeeded=needsAi();clearTimeout(saveTimer);running=true;refresh();const key=editingKey;withAi(()=>{setStatus('Готовим пробный ресайз…');post({type:'trial',masterId:master.id,trialSize:key.split('x').map(Number),roles:roles(),sizes,options:aiNeeded?options():opts});});}catch(e){running=false;refresh();setStatus(e.message,'error');}});
+document.querySelector('main').addEventListener('input',e=>{if(!['batch-select','confirm-update','variant-size'].includes(e.target.id)&&!e.target.id.startsWith('ai-'))queueSave();});
+document.querySelector('main').addEventListener('change',e=>{if(!['batch-select','confirm-update','variant-size'].includes(e.target.id)&&!e.target.id.startsWith('ai-'))queueSave();});
+document.querySelector('main').addEventListener('click',e=>{if(e.target.closest('.preset')||['all','none','portrait','crop','visual-preview'].includes(e.target.id))queueSave();});
+$('update').addEventListener('click',()=>{try{if(running||!master||!val('batch-select')||!bool('confirm-update'))return;clearTimeout(saveTimer);const sizes=getSizes();running=true;refresh();const batchId=val('batch-select');withAi(()=>{setStatus('Готовим обновление. Прежний набор пока не меняется…');post({type:'update',batchId,confirmed:true,roles:roles(),sizes,options:options()});});}catch(e){running=false;refresh();setStatus(e.message,'error');}});
+for(const k of ['focusX','focusY','zoom','visualSide'])for(const event of ['input','change'])$(k).addEventListener(event,()=>{if(editingKey&&!bool('variant-enabled'))renderVariantFields();});
+$('background').addEventListener('input',()=>{$('fillColor').value='custom';});
+// "Fill the banner" treats the picture as a full-bleed background (unless "separate block" is chosen explicitly).
+function effectiveMode(){return ['fill','width','height'].includes(val('imageFit'))&&val('visualMode')!=='block'?'background':String(val('visualMode'));}
+let lastMode='';
+for(const id of ['visualMode','imageFit'])$(id).addEventListener('change',()=>{const mode=effectiveMode();if(mode===lastMode&&id==='imageFit')return;lastMode=mode;subject=null;subjectSource='auto';requestVisual();});
+$('capture').addEventListener('click',()=>{saveNow();post({type:'capture'});});
+const activeSizes=()=>platforms.filter(p=>activePlatforms.has(p.id)).flatMap(p=>p.sizes);
+$('all').addEventListener('click',()=>{selected=new Set(activeSizes().map(s=>s.join('x')));refresh()});$('none').addEventListener('click',()=>{selected.clear();refresh()});$('portrait').addEventListener('click',()=>{selected=new Set(activeSizes().filter(s=>s[1]>s[0]).map(s=>s.join('x')));refresh()});$('custom').addEventListener('input',refresh);
+const cropPoint=e=>{const box=$('visual-preview').getBoundingClientRect();return {x:clampNum((e.clientX-box.left)/Math.max(1,box.width),0,1),y:clampNum((e.clientY-box.top)/Math.max(1,box.height),0,1),px:e.clientX,py:e.clientY};};
+$('crop').addEventListener('mousedown',e=>{if(running)return;e.preventDefault();dragStart=cropPoint(e);$('crop').classList.add('drawing');});
+window.addEventListener('mousemove',e=>{if(!dragStart)return;const p=cropPoint(e);if(Math.abs(p.px-dragStart.px)+Math.abs(p.py-dragStart.py)<5)return;subject={x:Math.min(p.x,dragStart.x),y:Math.min(p.y,dragStart.y),w:Math.abs(p.x-dragStart.x),h:Math.abs(p.y-dragStart.y)};drawSubject();});
+window.addEventListener('mouseup',e=>{if(!dragStart)return;const p=cropPoint(e),moved=Math.abs(p.px-dragStart.px)+Math.abs(p.py-dragStart.py)>=5,start=dragStart;dragStart=null;$('crop').classList.remove('drawing');
+  if(moved){const w=Math.abs(p.x-start.x),h=Math.abs(p.y-start.y);if(w>=.03&&h>=.03)setSubject({x:Math.min(p.x,start.x),y:Math.min(p.y,start.y),w,h},'user');else setSubject(null,'user');}
+  // A click moves the object frame (or the focus point when there is none) to the clicked spot.
+  else if(subject)setSubject({...subject,x:clampNum(p.x-subject.w/2,0,1-subject.w),y:clampNum(p.y-subject.h/2,0,1-subject.h)},'user');
+  else{$('focusX').value=Math.round(p.x*100);$('focusY').value=Math.round(p.y*100);cross();if(editingKey&&!bool('variant-enabled'))renderVariantFields();}
+  queueSave();});
+$('subject-auto').addEventListener('click',()=>{if(aiOn()&&sceneAi){applyAi();queueSave();}else if(sceneInfo){setSubject(sceneInfo.subject,'auto');aiStatus();queueSave();}else{subject=null;subjectSource='auto';drawSubject();requestVisual();}});
+['focusX','focusY'].forEach(k=>$(k).addEventListener('change',()=>{if(subject){const cx=clampNum(val('focusX'),0,100)/100,cy=clampNum(val('focusY'),0,100)/100;subject={...subject,x:clampNum(cx-subject.w/2,0,1-subject.w),y:clampNum(cy-subject.h/2,0,1-subject.h)};subjectSource='user';subjectLabel();}cross();}));
+$('run').addEventListener('click',()=>{try{if(running||!master)return;const sizes=getSizes();if(!sizes.length)throw Error('Выберите размеры.');clearTimeout(saveTimer);running=true;refresh();withAi(()=>{setStatus('Подготовка слоёв и шрифтов…');post({type:'generate',roles:roles(),sizes,options:options()});})}catch(e){running=false;refresh();setStatus(e.message,'error')}});
+$('cancel').addEventListener('click',()=>{post({type:'cancel'});setStatus('Останавливаем после текущего формата…')});
+$('prompt').addEventListener('click',async()=>{try{if(!master)throw Error('Сначала выберите мастер.');const sizes=getSizes();const mapped=roles();const layers=Object.fromEntries(keys.map(k=>[k,master.candidates.find(c=>c.id===mapped[k])||null]));const task='Ты арт-директор. Помоги адаптировать приложенный мастер-баннер в разные размеры. Сохраняй тексты, логотипы и изображения. Плагин сам делает редактируемые фреймы и переносы. Ты можешь настроить кадрирование и баланс.\nМастер: '+JSON.stringify({name:master.name,width:master.width,height:master.height,layers})+'\nРазмеры: '+sizes.map(s=>s.join('x')).join(', ')+'\nТекущие параметры: '+JSON.stringify(options())+'\nВерни только JSON: {"version":1,"variants":[{"size":"1080x1920","focusX":50,"focusY":50,"zoom":100,"headlineScale":1,"visualSide":"right"}]}. Для size используй только указанные размеры. focusX/focusY: 0–100, точка главного объекта в исходном слое изображения. zoom: 100–500, масштаб относительно вписывания/заполнения. headlineScale: 0.6–1.4. visualSide: left или right, действует на горизонтали с отношением сторон от 1.55 до 4. Все параметры, кроме size, необязательны. Если изображения нет перед глазами, не выдумывай точку фокуса: оставь текущие значения. Никаких новых текстов, кода, ID или дополнительных ключей.';$('prompt-text').value=task;$('prompt-text').hidden=false;try{await navigator.clipboard.writeText(task);setStatus('Задание скопировано. Вставьте его в свой AI-чат и приложите мастер.')}catch(e){$('prompt-text').select();document.execCommand('copy');setStatus('Задание подготовлено. Скопируйте текст и вставьте в свой AI-чат.')}}catch(e){setStatus(e.message,'error')}});
+
+// ——— AI framing: one request per master, the answer is scene geometry only ———
+const AI_PROVIDERS={
+  anthropic:{url:'https://api.anthropic.com/v1/messages',model:'claude-haiku-5-5',key:true},
+  openai:{url:'https://api.openai.com/v1/chat/completions',model:'gpt-5.4-mini',key:true,extra:{max_completion_tokens:1200,reasoning_effort:'low'}},
+  gemini:{url:'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',model:'gemini-flash-latest',key:true,extra:{max_tokens:1200,reasoning_effort:'low'}},
+  openrouter:{url:'https://openrouter.ai/api/v1/chat/completions',model:'~openai/gpt-mini-latest',key:true,extra:{max_tokens:1200,reasoning:{effort:'low'}}},
+  custom:{url:'',model:'',key:false,extra:{max_tokens:400}},
+  bridge:{url:'http://localhost:8787/v1/chat/completions',model:'auto',key:true,extra:{max_tokens:400}},
+  chat:{url:'',model:'',key:false,manual:true}};
+const AI_PROMPT='You frame one advertising picture for banners of many proportions. Reply with JSON only, no prose:\n'+
+'{"label":"2-4 words in Russian","subject":[x,y,w,h],"core":[x,y,w,h],"anchor":"top|center|bottom","strip":"whole|core","wide":"whole|core","square":"whole|core","tall":"whole|core"}\n'+
+'Boxes are integer percents of the image width and height, x,y = top-left corner.\n'+
+'subject: the smallest box with everything that must stay visible: main object, people, product, text or logo baked into the picture. Not empty background, sky or floor.\n'+
+'core: the most recognizable part of subject that is enough alone when space is tight (face, product front, top of a building). Inside subject.\n'+
+'anchor: which side of subject to keep when it is taller than the space (top for people and buildings).\n'+
+'Classes: strip = banners wider than 4:1 (very low height), wide = 1.5-4:1, square = about 1:1, tall = vertical. For each class answer "whole" unless the full subject would be too small to recognise there, then "core". Square and tall banners usually fit the whole subject; strips usually need core.';
+function aiOn(){return !!aiCfg.enabled;}
+function aiProvider(){return AI_PROVIDERS[aiCfg.provider]||AI_PROVIDERS.anthropic;}
+function aiModel(){return aiCfg.model||aiProvider().model;}
+function sameBox(a,b){return !!a&&!!b&&['x','y','w','h'].every(k=>Math.abs(a[k]-b[k])<.002);}
+function hashBytes(b){b=b instanceof Uint8Array?b:new Uint8Array(b);let h=0x811c9dc5;for(let i=0;i<b.length;i++){h^=b[i];h=Math.imul(h,0x01000193)>>>0;}return 'f'+h.toString(16)+'-'+b.length;}
+function base64(bytes){let s='';for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode.apply(null,Array.from(bytes.subarray(i,i+0x8000)));return btoa(s);}
+function renderAiConfig(){const pr=aiCfg.provider;$('ai-enabled').checked=aiOn();$('ai-provider').value=pr;$('ai-model').value=aiCfg.model;$('ai-model').placeholder=pr==='bridge'?'auto — haiku или модель Codex':aiProvider().model||'название модели';$('ai-endpoint').value=aiCfg.endpoint;$('ai-endpoint').placeholder=pr==='bridge'?AI_PROVIDERS.bridge.url:'http://localhost:11434/v1/chat/completions';$('ai-key').value=aiCfg.key;$('ai-endpoint-row').hidden=pr!=='custom'&&pr!=='bridge';$('ai-mk-row').hidden=pr==='chat';$('ai-chat').hidden=pr!=='chat';$('ai-bridge-help').hidden=pr!=='bridge';$('ai-key-label').textContent=pr==='bridge'?'Код моста':'Ключ API';$('ai-key').placeholder=pr==='bridge'?'ba-…':'вставьте ключ';$('ai-run').hidden=pr==='chat';$('ai-section').classList.toggle('ai-off',!aiOn());$('tag').textContent='1.6 · '+(aiOn()?'AI-кадрирование':'Локально');aiStatus();}
+function aiStatus(){const n=$('ai-note');if(!n)return;n.classList.toggle('error',!!aiError&&aiOn());
+  if(!aiOn()){n.textContent='AI-кадрирование выключено — работает локальный анализ.';}
+  else if(aiError)n.textContent='AI: '+aiError+' Использован локальный анализ.';
+  else if(subjectSource==='user')n.textContent='Рамка объекта задана вручную — AI её не меняет. «Найти заново» вернёт автоматический режим.';
+  else if(sceneAi)n.textContent='AI: «'+(sceneAi.label||'объект')+'». Полосы — '+(sceneAi.formats.strip==='core'?'крупно главное':'объект целиком')+', вертикали — '+(sceneAi.formats.tall==='core'?'крупно главное':'целиком')+'. Ответ сохранён в мастере.';
+  else if(aiProvider().manual)n.textContent=visualId?'Скопируйте задание и картинку в чат ChatGPT или Claude и вставьте ответ ниже. Пока ответа нет, работает локальный анализ.':'Назначьте изображение, чтобы подготовить его для чата.';
+  else n.textContent=visualId?'AI разберёт картинку при создании ресайзов (1 запрос'+(alternates.some(a=>a.hash&&!a.ai)?' + по одному на доп. мастер':'')+').':'Назначьте изображение, чтобы AI его разобрал.';
+  disable($('ai-run'),!aiOn()||!master||running||!visualId);for(const id of ['ai-chat-prompt','ai-chat-image','ai-chat-apply'])disable($(id),!aiOn()||!master||running||!visualId);}
+function saveAiConfig(){clearTimeout(aiCfgTimer);aiCfgTimer=setTimeout(()=>post({type:'ai-config-save',config:aiCfg}),350);}
+function readAiFields(){aiCfg={enabled:bool('ai-enabled'),provider:String(val('ai-provider')),model:String(val('ai-model')).trim(),endpoint:String(val('ai-endpoint')).trim(),key:String(val('ai-key')).trim()};}
+for(const id of ['ai-enabled','ai-provider','ai-model','ai-endpoint','ai-key'])$(id).addEventListener(id==='ai-enabled'||id==='ai-provider'?'change':'input',()=>{const was=aiOn(),prov=aiCfg.provider;readAiFields();if(prov!==aiCfg.provider){aiCfg.model='';}aiError='';renderAiConfig();saveAiConfig();
+  if(id==='ai-enabled'){if(aiOn()&&sceneAi&&subjectSource!=='user')applyAi();else if(!aiOn()&&was&&subjectSource==='ai')setSubject(sceneInfo?.subject||null,'auto');queueSave();}});
+function applyAi(){if(!sceneAi)return;setSubject(sceneAi.subject,'ai');aiStatus();}
+// Main picture without an answer for its current image, and extra masters without one.
+function aiJobs(){if(!aiOn()||aiProvider().manual)return [];const jobs=[];if(visualId&&sceneHash&&!sceneAi&&subjectSource!=='user')jobs.push({key:visualId,hash:sceneHash});for(const a of alternates)if(a.hash&&!a.ai)jobs.push({key:a.id,hash:a.hash,alt:a});return jobs;}
+function needsAi(){return aiJobs().length>0;}
+function aiImage(job){return new Promise(ok=>{aiWaiters.set(job.key,ok);post(job.alt?{type:'ai-image',altId:job.key}:{type:'ai-image',id:job.key,visualMode:effectiveMode(),roles:roles()});setTimeout(()=>{if(aiWaiters.get(job.key)===ok){aiWaiters.delete(job.key);ok(null);}},20000);});}
+function box100(v){if(!Array.isArray(v)||v.length!==4)return null;const n=v.map(Number);if(n.some(x=>!Number.isFinite(x)))return null;let [x,y,w,h]=n.map(t=>Math.max(0,Math.min(100,t))/100);w=Math.min(w,1-x);h=Math.min(h,1-y);return w>=.02&&h>=.02?{x:+x.toFixed(4),y:+y.toFixed(4),w:+w.toFixed(4),h:+h.toFixed(4)}:null;}
+function parseAiReply(text,hash,model){const m=String(text||'').match(/\{[\s\S]*\}/);if(!m)throw Error('модель ответила не JSON.');let j;try{j=JSON.parse(m[0]);}catch(_e){throw Error('не удалось прочитать JSON ответа.');}
+  const subject=box100(j.subject);if(!subject)throw Error('в ответе нет рамки объекта.');let core=box100(j.core);
+  if(core){const x=Math.max(core.x,subject.x),y=Math.max(core.y,subject.y),r=Math.min(core.x+core.w,subject.x+subject.w),b=Math.min(core.y+core.h,subject.y+subject.h);core=r-x>=.02&&b-y>=.02?{x,y,w:+(r-x).toFixed(4),h:+(b-y).toFixed(4)}:null;}
+  const fit=v=>v==='core'&&core?'core':'whole';
+  return {hash,model,label:String(j.label||'').slice(0,60),subject,core,anchor:['center','bottom'].includes(j.anchor)?j.anchor:'top',formats:{strip:fit(j.strip),wide:fit(j.wide),square:fit(j.square),tall:fit(j.tall)}};}
+async function aiRequest(url,init){const c=new AbortController(),t=setTimeout(()=>c.abort(),aiCfg.provider==='bridge'?150000:45000);try{return await fetch(url,{...init,signal:c.signal});}catch(e){throw Error(e.name==='AbortError'?(aiCfg.provider==='bridge'?'мост не ответил за 150 секунд.':'модель не ответила за 45 секунд.'):aiCfg.provider==='bridge'?'мост не отвечает. Запустите banner-adapt-bridge.mjs в Терминале и не закрывайте окно.':'нет соединения, или сервер не принимает запросы из Figma. Для своего сервера добавьте его адрес в manifest.json.');}finally{clearTimeout(t);}}
+function aiHttpError(status,body){const hint=status===401||status===403?'ключ не подошёл или нет доступа к модели.':status===404?'модель или адрес не найдены.':status===429?'лимит запросов или баланс исчерпан.':'ошибка '+status+'.';return Error(hint+(body?' '+String(body).slice(0,140):''));}
+async function callAi(bytes,hash){const p=aiProvider(),model=aiModel(),url=aiCfg.provider==='custom'?aiCfg.endpoint:aiCfg.provider==='bridge'?aiCfg.endpoint||p.url:p.url;
+  if(!url)throw Error('укажите адрес сервера.');if(!model)throw Error('укажите модель.');if(p.key&&!aiCfg.key)throw Error(aiCfg.provider==='bridge'?'вставьте код моста из окна Терминала.':'вставьте ключ API.');
+  const data=base64(bytes);let r,text='';
+  if(aiCfg.provider==='anthropic'){
+    r=await aiRequest(url,{method:'POST',headers:{'content-type':'application/json','x-api-key':aiCfg.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model,max_tokens:300,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data}},{type:'text',text:AI_PROMPT}]}]})});
+    if(!r.ok)throw aiHttpError(r.status,await r.text().catch(()=>''));const j=await r.json();text=(j.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('');}
+  else{
+    const headers={'content-type':'application/json'};if(aiCfg.key)headers.authorization='Bearer '+aiCfg.key;if(aiCfg.provider==='openrouter')headers['x-title']='Banner Adapt';
+    const base={model,messages:[{role:'user',content:[{type:'text',text:AI_PROMPT},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+data,detail:'low'}}]}]};
+    r=await aiRequest(url,{method:'POST',headers,body:JSON.stringify({...base,...(p.extra||{})})});
+    // Servers that do not know the token-saving options get the plain request once.
+    if(r.status===400){const b=await r.text().catch(()=>'');if(!/reasoning|max_completion_tokens|max_tokens|detail|unrecognized|unknown/i.test(b))throw aiHttpError(400,b);r=await aiRequest(url,{method:'POST',headers,body:JSON.stringify({...base,max_tokens:600})});}
+    if(!r.ok)throw aiHttpError(r.status,await r.text().catch(()=>''));const j=await r.json(),c=j.choices?.[0]?.message?.content;text=Array.isArray(c)?c.map(x=>x.text||'').join(''):String(c||'');}
+  return parseAiReply(text,hash,model);}
+async function ensureAi(){aiError='';const jobs=aiJobs();
+  for(let i=0;i<jobs.length;i++){const job=jobs[i];setStatus('AI разбирает картинку'+(jobs.length>1?' ('+(i+1)+' из '+jobs.length+')':'')+'…');
+    try{const bytes=await aiImage(job);if(!bytes)throw Error('не удалось подготовить картинку.');const scene=await callAi(bytes,job.hash);
+      if(job.alt){job.alt.ai=scene;}else if(job.hash===sceneHash){sceneAi=scene;if(subjectSource!=='user')applyAi();}}
+    catch(e){aiError=e.message||String(e);break;}}
+  aiStatus();
+  // The answer is stored in the master right away, so another run or a teammate does not pay for it again.
+  if(jobs.length&&!aiError&&master)try{clearTimeout(saveTimer);post({type:'save-settings',masterId:master.id,roles:roles(),sizes:getSizes(),options:options()});}catch(_e){}}
+// Runs the AI step first when it is needed; the action itself always runs, with the local analysis as a fallback.
+function withAi(action){if(!needsAi()){action();return;}ensureAi().then(()=>{try{action();}catch(e){running=false;refresh();setStatus(e.message,'error');}});}
+$('ai-run').addEventListener('click',()=>{if(running||!aiOn())return;sceneAi=null;savedAi=null;for(const a of alternates){a.ai=null;a.savedAi=null;}if(subjectSource==='user')subjectSource='auto';running=true;refresh();ensureAi().then(()=>{running=false;refresh();setStatus(aiError?'AI недоступен — '+aiError:'AI разобрал картинку. Проверьте рамку на превью.',aiError?'error':'success');});});
+// Manual mode: the same task and picture go to an ordinary ChatGPT or Claude chat; the JSON answer is pasted back.
+let chatImage=null;
+async function copyText(t){try{await navigator.clipboard.writeText(t);return true;}catch(_e){return false;}}
+$('ai-chat-prompt').addEventListener('click',async()=>{const ok=await copyText(AI_PROMPT);const ta=$('ai-chat-prompt-text');ta.value=AI_PROMPT;ta.hidden=ok;setStatus(ok?'Задание скопировано. Вставьте его в чат вместе с картинкой.':'Скопируйте задание из поля ниже.');if(!ok){ta.focus();ta.select();}});
+$('ai-chat-image').addEventListener('click',async()=>{if(!visualId)return;setStatus('Готовим картинку…');const bytes=await aiImage({key:visualId});if(!bytes){setStatus('Не удалось подготовить картинку.','error');return;}
+  chatImage=bytes;if(urls.chat)URL.revokeObjectURL(urls.chat);urls.chat=URL.createObjectURL(new Blob([bytes],{type:'image/jpeg'}));$('ai-chat-img').src=urls.chat;$('ai-chat-image-box').hidden=false;setStatus('Картинка готова: скопируйте или скачайте её.');});
+$('ai-chat-copy').addEventListener('click',async()=>{try{if(!chatImage)return;const img=new Image();await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src=urls.chat;});const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;c.getContext('2d').drawImage(img,0,0);
+  const png=await new Promise(r=>c.toBlob(r,'image/png'));await navigator.clipboard.write([new ClipboardItem({'image/png':png})]);setStatus('Картинка скопирована — вставьте её в чат.','success');}catch(_e){setStatus('Figma не разрешила скопировать картинку. Нажмите «Скачать JPG» или перетащите картинку из панели в чат.');}});
+$('ai-chat-download').addEventListener('click',()=>{if(chatImage)download('banner-adapt-'+String(master?.name||'master').replace(/[^\wА-Яа-яЁё-]+/g,'-').slice(0,40)+'.jpg',chatImage,'image/jpeg');});
+$('ai-chat-apply').addEventListener('click',()=>{try{if(!sceneHash)throw Error('картинка ещё не проанализирована, подождите пару секунд.');sceneAi=parseAiReply(val('ai-chat-reply'),sceneHash,'chat');aiError='';if(subjectSource==='user')subjectSource='auto';applyAi();$('ai-chat-reply').value='';
+  if(master)try{post({type:'save-settings',masterId:master.id,roles:roles(),sizes:getSizes(),options:options()});}catch(_e){}setStatus('Ответ применён и сохранён в мастере.','success');}catch(e){setStatus('Ответ не подошёл: '+e.message,'error');}});
+window.addEventListener('message',e=>{const m=e.data.pluginMessage;if(!m)return;
+ if(m.type==='presets'){platforms=m.platforms||[{id:'own',name:'Размеры',slug:'own',format:'png',maxKB:null,sizes:m.sizes,note:''}];presets=[...new Map(platforms.flatMap(p=>p.sizes).map(z=>[z.join('x'),z])).values()];activePlatforms=new Set(platforms.some(p=>p.id==='own')?['own']:[]);selected=new Set((platforms.find(p=>p.id==='own')||platforms[0]).sizes.map(z=>z.join('x')));renderPresets()}
+ if(m.type==='master'){clearTimeout(saveTimer);restoring=true;master=m.data;const title=document.createElement('strong');title.textContent=master.name;const info=document.createElement('span');info.className='muted';info.textContent=master.width+' × '+master.height+' · '+master.candidates.length+' слоёв';$('master').replaceChildren(title,info);setRoleOptions(master);applySettings(m.settings);restoring=false;$('save-status').textContent=m.settings?'Настройки восстановлены.':'Настройки сохранятся при изменении или создании набора.';setStatus('Проверьте роли и форматы перед созданием.');requestVisual()}
+ if(m.type==='preview'){if(m.kind==='visual'&&m.id!==visualId)return;if(urls[m.kind])URL.revokeObjectURL(urls[m.kind]);const url=URL.createObjectURL(new Blob([new Uint8Array(m.bytes)],{type:'image/png'}));urls[m.kind]=url;$(m.kind+'-preview').src=url;$(m.kind+'-preview').hidden=false;if(m.kind==='visual'){$('crop').hidden=false;$('image-mode-note').textContent=m.isBackground?'Фон на весь баннер. Масштаб 100% сохраняет кадр мастера при тех же пропорциях. При смене формата края обрезаются; фокус можно изменить на превью. Мягкие края к фону не применяются.':'Отдельная иллюстрация. Масштаб и точка фокуса относятся к выбранному слою.';cross()}}
+ if(m.type==='alternates'){alternates=m.items.map(it=>({...it,subject:it.subject||it.savedSubject||null,info:null,savedAi:it.aiScene||null,ai:null,hash:''}));refresh();}
+ if(m.type==='alternate'){if(!alternates.some(a=>a.id===m.item.id)&&alternates.length<3){alternates.push({...m.item,subject:m.item.savedSubject||null,info:null});setStatus('Дополнительный мастер добавлен.');queueSave();}refresh();}
+ if(m.type==='alt-scene'){const a=alternates.find(x=>x.id===m.id);if(a){if(!m.bytes){a.info={};refresh();}else{a.hash=hashBytes(m.bytes);a.ai=a.savedAi&&a.savedAi.hash===a.hash?a.savedAi:a.ai&&a.ai.hash===a.hash?a.ai:null;aiStatus();}if(m.bytes)analyzeScene(m.bytes).then(info=>{a.info=info||{};if(!a.subject&&info?.subject)a.subject=info.subject;refresh();});}}
+ if(m.type==='scene'&&m.id===visualId){const hash=hashBytes(m.bytes);sceneHash=hash;sceneAi=savedAi&&savedAi.hash===hash?savedAi:sceneAi&&sceneAi.hash===hash?sceneAi:null;if(aiOn()&&sceneAi&&subjectSource!=='user')applyAi();aiStatus();analyzeScene(m.bytes).then(info=>{if(m.id!==visualId)return;sceneInfo=info;if(aiOn()&&sceneAi&&subjectSource==='ai')subjectLabel();else if(info&&(subjectSource==='auto'||subjectSource==='ai'))setSubject(info.subject,'auto');else if(subjectSource==='ai')setSubject(null,'auto');else subjectLabel();aiStatus();});}
+ if(m.type==='ai-config'){if(m.config)aiCfg={...aiCfg,...m.config};renderAiConfig();}
+ if(m.type==='ai-image'){const w=aiWaiters.get(m.key);if(w){aiWaiters.delete(m.key);w(m.bytes?new Uint8Array(m.bytes):null);}}
+ if(m.type==='batches')renderBatches(m.items,m.selectedId);
+ if(m.type==='export-start'){exportJob={name:m.name,total:m.total,files:[],names:new Set(),chain:Promise.resolve()};$('export-report').replaceChildren();setStatus('Выгрузка: 0 из '+m.total+'…');}
+ if(m.type==='export-file'&&exportJob){const job=exportJob,f={w:m.w,h:m.h,bytes:new Uint8Array(m.bytes)};job.chain=job.chain.then(()=>exportOne(f,job)).then(()=>setStatus('Выгрузка: '+(m.index+1)+' из '+job.total+'…'));}
+ if(m.type==='export-end'&&exportJob){const job=exportJob;job.chain.then(()=>{if(!job.files.length){setStatus('Файлы не выгружены.','error');return;}
+   const camp=String(val('campaign')).trim().replace(/\s+/g,'-').replace(/[^A-Za-z0-9А-Яа-яЁё_-]/g,'')||'banners';
+   const zip=makeZip([...job.files.map(f=>({name:f.name,data:f.data})),{name:'specs.txt',data:utf8(specsText(job))}]);window.__lastZip=zip;download(camp+'.zip',zip);renderReport(job);
+   const over=job.files.filter(f=>f.over).length;setStatus((m.cancelled?'Выгрузка остановлена. ':'')+'Готово: '+job.files.length+' файлов в '+camp+'.zip'+(over?'. Больше лимита: '+over+' — упростите картинку или уменьшите детали.':'.'),over?'error':'success');exportJob=null;})
+   .catch(e=>{setStatus('Не удалось подготовить файлы: '+e.message,'error');exportJob=null;});}
+ if(m.type==='reset-done'&&master?.id===m.masterId){$('save-status').textContent='Настройки сброшены: роли определены заново, форматы и параметры — по умолчанию.';setStatus('Настройки мастера сброшены. Подключение AI не менялось.','success');}
+ if(m.type==='saved'&&master?.id===m.masterId)$('save-status').textContent='Настройки сохранены в мастере.';
+ if(m.type==='save-error'&&master?.id===m.masterId)$('save-status').textContent='Не удалось сохранить: '+m.text;
+ if(m.type==='status')setStatus(m.text);if(m.type==='error'){setStatus(m.text,'error');running=false;refresh()}
+ if(m.type==='busy'){running=m.value;$('cancel').style.display=running?'block':'none';refresh()}
+ if(m.type==='progress')setStatus('Создано '+m.done+' из '+m.total+'…');
+ if(m.type==='done'){if(m.outputId&&!m.trial)lastOutputId=m.outputId;const res=m.results||[],cnt={passed:0,warning:0,failed:0};for(const r of res)cnt[r.status]++;
+  const general=m.general||m.warnings||[];const problems=cnt.warning+cnt.failed;
+  setStatus((m.cancelled?'Остановлено. ':'Готово. ')+(m.trial?'Пробный ресайз готов.':(m.updated?'Обновлено ':'Создано ')+m.count+' форматов.')+(m.backupId?' Прежняя версия сохранена рядом.':'')+(res.length?' Пройдено '+cnt.passed+', проверить '+cnt.warning+', не прошли '+cnt.failed+'.':'')+(problems||general.length?' Подробности — в «Результатах проверки».':' Проверьте композиции на холсте.'),cnt.failed?'error':'success');
+  renderResults(res,cnt);$('warnings').replaceChildren();general.forEach(w=>{const li=document.createElement('li');li.textContent=w;$('warnings').append(li)});$('general-title').hidden=!general.length||!res.length;
+  $('report').hidden=!res.length&&!general.length;$('report').open=!!(problems||general.length);}
+});
+// Results: one line per banner that needs attention, with a button that selects it on the canvas.
+const STATUS_TEXT={passed:'✓ Пройдено',warning:'⚠ Проверить',failed:'✕ Не прошёл'};
+function renderResults(res,cnt){const root=$('results');root.replaceChildren();
+  $('result-summary').textContent=res.length?'Пройдено: '+cnt.passed+' · Проверить: '+cnt.warning+' · Не прошли: '+cnt.failed:'';
+  const order={failed:0,warning:1,passed:2};
+  for(const r of [...res].filter(r=>r.status!=='passed').sort((a,b)=>order[a.status]-order[b.status])){
+    const li=document.createElement('li');li.className=r.status;const body=document.createElement('div');const head=document.createElement('div');
+    const st=document.createElement('span');st.className='st';st.textContent=STATUS_TEXT[r.status]+' ';head.append(st,document.createTextNode(r.w+'×'+r.h));
+    const ul=document.createElement('ul');for(const i of r.issues){const x=document.createElement('li');x.textContent=i.text;ul.append(x);}body.append(head,ul);
+    const b=document.createElement('button');b.textContent='Показать';b.addEventListener('click',()=>post({type:'select-layer',id:r.id}));li.append(body,b);root.append(li);}
+}
+
+// ---- Export: platform files and ZIP (no network; everything happens in the panel) ----
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRC[(c^b[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+// Stored (uncompressed) ZIP: JPG/PNG are already compressed. UTF-8 names (flag 0x0800).
+const utf8=t=>typeof TextEncoder!=='undefined'?new TextEncoder().encode(t):Uint8Array.from(unescape(encodeURIComponent(t)),c=>c.charCodeAt(0));
+function makeZip(files){const enc={encode:utf8},parts=[],central=[];let off=0;
+  for(const f of files){const name=enc.encode(f.name),data=f.data,crc=crc32(data),h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);h.setUint32(14,crc,true);h.setUint32(18,data.length,true);h.setUint32(22,data.length,true);h.setUint16(26,name.length,true);
+    parts.push(new Uint8Array(h.buffer),name,data);
+    const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint32(16,crc,true);c.setUint32(20,data.length,true);c.setUint32(24,data.length,true);c.setUint16(28,name.length,true);c.setUint32(42,off,true);
+    central.push(new Uint8Array(c.buffer),name);off+=30+name.length+data.length;}
+  const size=central.reduce((a,b)=>a+b.length,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,size,true);e.setUint32(16,off,true);
+  const all=[...parts,...central,new Uint8Array(e.buffer)],out=new Uint8Array(all.reduce((a,b)=>a+b.length,0));let p=0;for(const a of all){out.set(a,p);p+=a.length;}return out;}
+// PNG bytes → JPG at a given quality (white under transparency). Replaceable in tests.
+async function encodeImage(png,type,quality){const url=URL.createObjectURL(new Blob([png],{type:'image/png'}));try{const img=new Image();await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src=url});
+  const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0);
+  const blob=await new Promise(r=>c.toBlob(r,type,quality));return new Uint8Array(await blob.arrayBuffer());}finally{URL.revokeObjectURL(url);}}
+// Highest JPG quality that fits the limit (binary search 0.40–0.95). Over the limit even at 0.40 → returned with over=true.
+async function fitJpeg(png,maxKB){const limit=maxKB?maxKB*1024:Infinity;let best=await encodeImage(png,'image/jpeg',.92);if(best.length<=limit)return {data:best,q:.92,over:false};
+  let lo=.4,hi=.92,found=null;for(let i=0;i<6;i++){const q=(lo+hi)/2,d=await encodeImage(png,'image/jpeg',q);if(d.length<=limit){found={data:d,q};lo=q;}else hi=q;}
+  if(found)return {...found,over:false};const d=await encodeImage(png,'image/jpeg',.4);return {data:d,q:.4,over:d.length>limit};}
+function fileTargets(w,h){const mine=platforms.filter(p=>activePlatforms.has(p.id)&&p.sizes.some(z=>z[0]===w&&z[1]===h));return mine.length?mine:[{id:'other',name:'Другие размеры',slug:'other',format:'png',maxKB:null}];}
+async function exportOne(f,job){const fmt=val('exportFormat'),camp=String(val('campaign')).trim().replace(/\s+/g,'-').replace(/[^A-Za-z0-9А-Яа-яЁё_-]/g,'');
+  for(const t of fileTargets(f.w,f.h)){const type=fmt==='platform'?t.format:fmt;let data=f.bytes,q=null,over=false;
+    if(type==='jpg'){const r=await fitJpeg(f.bytes,t.maxKB);data=r.data;q=r.q;over=r.over;}
+    else if(t.maxKB&&data.length>t.maxKB*1024&&fmt==='platform'){const r=await fitJpeg(f.bytes,t.maxKB);data=r.data;q=r.q;over=r.over;}
+    const ext=q===null?'png':'jpg';let name=t.slug+'/'+(camp?camp+'_':'')+t.slug+'_'+f.w+'x'+f.h+'.'+ext,i=2;while(job.names.has(name))name=name.replace(/(\.\w+)$/,'-'+(i++)+'$1');job.names.add(name);
+    job.files.push({name,data,platform:t.name,limit:t.maxKB,q,over,size:[f.w,f.h]});}}
+function renderReport(job){const root=$('export-report');root.replaceChildren();const tbl=document.createElement('table');tbl.className='report';
+  for(const f of job.files){const tr=document.createElement('tr');if(f.over)tr.className='over';for(const v of [f.name.split('/').pop(),(f.data.length/1024).toFixed(0)+' КБ',f.limit?'≤ '+kb(f.limit):'—',f.over?'⚠ больше лимита':(f.q?'JPG '+Math.round(f.q*100)+'%':'PNG')]){const td=document.createElement('td');td.textContent=v;tr.append(td);}tbl.append(tr);}
+  root.append(tbl);}
+function specsText(job){const used=[...new Set(job.files.map(f=>f.platform))];return ['Banner Adapt · Alexey Lyamin · https://alexlyamin.framer.website/ru-home','Набор: '+job.name,'Выгружено: '+new Date().toLocaleString('ru-RU'),'',
+  ...platforms.filter(p=>used.includes(p.name)).map(p=>p.name+'\n  '+p.note),'',...job.files.map(f=>f.name+' · '+(f.data.length/1024).toFixed(1)+' КБ'+(f.limit?' / лимит '+kb(f.limit):'')+(f.over?' · БОЛЬШЕ ЛИМИТА':''))].join('\n');}
+function download(name,bytes,type='application/zip'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bytes],{type}));a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000);}
+$('export').addEventListener('click',()=>{if(running||!master)return;post({type:'export',batchId:val('batch-select')||lastOutputId});setStatus('Готовим файлы…');});
+post({type:'ready'});
+</script></body></html>
