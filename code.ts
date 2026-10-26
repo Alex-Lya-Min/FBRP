@@ -1,6 +1,6 @@
 // Banner Adapt 1.6 — local layout engine. Optional AI framing: one small request per master with the user's own key,
 // the answer is the scene geometry only; every format is still computed locally.
-// Author: Alexey Lyamin · https://alexlyamin.framer.website/ru-home
+// Author: Алексей Лямин (Alex Lyamin) · https://alexlyamin.framer.website/ru-home
 type Role = 'logo'|'headline'|'date'|'body'|'cta'|'visual';
 type MasterNode = FrameNode | GroupNode | ComponentNode | InstanceNode;
 type DesignNode = MasterNode | TextNode | RectangleNode | EllipseNode | VectorNode | BooleanOperationNode | PolygonNode | StarNode | LineNode;

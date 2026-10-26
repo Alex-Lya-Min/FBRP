@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Banner Adapt bridge — AI framing through your Claude or ChatGPT subscription, without an API key.
-// Author: Alexey Lyamin · https://alexlyamin.framer.website/ru-home
+// Author: Алексей Лямин (Alex Lyamin) · https://alexlyamin.framer.website/ru-home
 //
 // The plugin sends one picture per master to http://localhost:8787 (OpenAI-compatible format).
 // The bridge passes it to the Claude Code CLI (`claude`, signed in with Pro/Max) or the Codex CLI
