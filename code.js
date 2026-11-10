@@ -1027,7 +1027,7 @@ function textStack(assets, frame, b, m, options, warnings, label, w, h) {
     const apply = (hs) => { let total = 0; for (const it of items) {
         let size = hs * it.ratio;
         if (it.role !== 'headline' && it.role !== 'cta')
-            size = relaxed ? Math.max(size, Math.min(5, hs)) : it.ratio < .5 ? Math.max(size, Math.min(hs * .62, minimum * .65)) : Math.max(size, Math.min(minimum, hs));
+            size = relaxed || (h <= 120 && it.ratio < .5) ? Math.max(size, Math.min(5, hs)) : it.ratio < .5 ? Math.max(size, Math.min(hs * .62, minimum * .65)) : Math.max(size, Math.min(minimum, hs));
         sizeItem(it, size, col.w);
         total += it.node.height + (it === items[0] ? 0 : it.gap * hs);
     } return total; };
@@ -2015,7 +2015,7 @@ async function generate(master, roles, rawSizes, input, progress = () => { }, is
         if (sj && (sj.w * sj.h >= .65 || sj.w >= .92 || sj.h >= .92))
             src.options.subject = null;
     }
-    const plan = sizes.map(([w, h]) => { const src = pickSource(list, w, h), vo = variantOptions(src.options, w + 'x' + h, src.primary ? ai : {}); const exact = !!vo.preserveMaster && !src.reserve && sameAspect(src.master, w, h); return { w, h, src, exact, soft: !!vo.preserveMaster && !exact && (!!src.reserve || aspectDistance(src.master, w, h) <= SOFT_LIMIT), vo }; });
+    const plan = sizes.map(([w, h]) => { const src = pickSource(list, w, h), vo = variantOptions(src.options, w + 'x' + h, src.primary ? ai : {}); const exact = !!vo.preserveMaster && !src.reserve && sameAspect(src.master, w, h); return { w, h, src, exact, soft: !!vo.preserveMaster && !exact && (!!src.reserve || aspectDistance(src.master, w, h) <= (h > w ? Math.log(SOFT_BG_TALL) : SOFT_LIMIT)), vo }; });
     const stage = figma.createFrame();
     figma.currentPage.appendChild(stage);
     stage.name = 'Banner Adapt · подготовка';

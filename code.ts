@@ -1,4 +1,4 @@
-// Banner Adapt 1.14 — local layout engine. Optional AI framing: one small request per master with the user's own key,
+// Banner Adapt 1.15 — local layout engine. Optional AI framing: one small request per master with the user's own key,
 // the answer is the scene geometry only; every format is still computed locally.
 // Author: Алексей Лямин (Alex Lyamin) · https://alexlyamin.framer.website/ru-home
 type Role = 'logo'|'headline'|'date'|'body'|'cta'|'visual';
@@ -519,7 +519,7 @@ function textStack(assets:Assets,frame:FrameNode,b:Layout,m:Metrics,options:Opti
   // Secondary text is kept at the minimum size while that fits; when it does not, it follows the master's proportion
   // to the headline (a footnote stays a footnote) and is reported as small.
   let relaxed=false;
-  const apply=(hs:number)=>{let total=0;for(const it of items){let size=hs*it.ratio;if(it.role!=='headline'&&it.role!=='cta')size=relaxed?Math.max(size,Math.min(5,hs)):it.ratio<.5?Math.max(size,Math.min(hs*.62,minimum*.65)):Math.max(size,Math.min(minimum,hs));sizeItem(it,size,col.w);total+=it.node.height+(it===items[0]?0:it.gap*hs);}return total;};
+  const apply=(hs:number)=>{let total=0;for(const it of items){let size=hs*it.ratio;if(it.role!=='headline'&&it.role!=='cta')size=relaxed||(h<=120&&it.ratio<.5)?Math.max(size,Math.min(5,hs)):it.ratio<.5?Math.max(size,Math.min(hs*.62,minimum*.65)):Math.max(size,Math.min(minimum,hs));sizeItem(it,size,col.w);total+=it.node.height+(it===items[0]?0:it.gap*hs);}return total;};
   // Never larger than the master's own headline scaled by the larger side ratio.
   // Prefer the master's own line breaks: size the headline so its longest line fits the column,
   // unless that would make it far smaller than the format suggests — then let it wrap.
@@ -985,7 +985,7 @@ async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unk
   // An object frame over (almost) the whole picture, or across its whole width or height, marks no object:
   // fitting it would only shrink the picture, and any narrower format would report it as cut.
   for(const src of list){src.reserve=hasReserve(src.master);const sj=src.options.subject;if(sj&&(sj.w*sj.h>=.65||sj.w>=.92||sj.h>=.92))src.options.subject=null;}
-  const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});const exact=!!vo.preserveMaster&&!src.reserve&&sameAspect(src.master,w,h);return {w,h,src,exact,soft:!!vo.preserveMaster&&!exact&&(!!src.reserve||aspectDistance(src.master,w,h)<=SOFT_LIMIT),vo};});
+  const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});const exact=!!vo.preserveMaster&&!src.reserve&&sameAspect(src.master,w,h);return {w,h,src,exact,soft:!!vo.preserveMaster&&!exact&&(!!src.reserve||aspectDistance(src.master,w,h)<=(h>w?Math.log(SOFT_BG_TALL):SOFT_LIMIT)),vo};});
   const stage=figma.createFrame();figma.currentPage.appendChild(stage);stage.name='Banner Adapt · подготовка';stage.fills=[];stage.clipsContent=false;stage.visible=false;stage.x=figma.viewport.center.x;stage.y=figma.viewport.center.y;
   let output:FrameNode|null=null,completed=0;const results:{id:string;w:number;h:number;name:string;status:Status;issues:Issue[]}[]=[];
   try{
