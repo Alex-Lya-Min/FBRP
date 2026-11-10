@@ -1,4 +1,4 @@
-// Banner Adapt 1.9 — local layout engine. Optional AI framing: one small request per master with the user's own key,
+// Banner Adapt 1.10 — local layout engine. Optional AI framing: one small request per master with the user's own key,
 // the answer is the scene geometry only; every format is still computed locally.
 // Author: Алексей Лямин (Alex Lyamin) · https://alexlyamin.framer.website/ru-home
 type Role = 'logo'|'headline'|'date'|'body'|'cta'|'visual';
@@ -245,12 +245,18 @@ function analyze(master:MasterNode){
   const date=freeTexts.find(n=>DATE.test(n.characters));
   const headline=freeTexts.filter(n=>n!==date).sort((a,b)=>{const sz=(n:TextNode)=>typeof n.fontSize==='number'?n.fontSize:20;return sz(b)-sz(a)||b.width*b.height-a.width*a.height;})[0];
   const images=nodes.filter(imagePaint).sort((a,b)=>b.width*b.height-a.width*a.height);
-  const visual=nodes.find(n=>/^(hero|visual|key visual|имидж|иллюстрация)/i.test(n.name))||images[0];
+  let visual=nodes.find(n=>/^(hero|visual|key visual|имидж|иллюстрация)/i.test(n.name));
+  // A picture assembled from several layers (image, masks, fades) in one wrapper is taken with the wrapper:
+  // the outermost one that holds no text, button or logo.
+  if(!visual&&images[0]){visual=images[0];
+    for(let p:BaseNode|null=visual.parent;p&&p.id!==master.id&&isMaster(p);p=p.parent){
+      if(descendants(p,400).some(n=>n.type==='TEXT')||(cta&&isInside(cta,p))||(namedLogo&&isInside(namedLogo,p)))break;visual=p;}}
   let logo=namedLogo;
   if(!logo)logo=nodes.find(n=>n.parent===master&&['FRAME','GROUP'].includes(n.type)&&n!==cta&&n!==visual&&descendants(n).some(x=>x.type==='VECTOR')&&!descendants(n).some(x=>x.type==='TEXT'||imagePaint(x)));
   {const up=logo&&logoLockup(logo,master);if(up&&up!==cta&&up!==visual&&!(headline&&isInside(headline,up)))logo=up;}
   const lockup=logo;
-  const body=freeTexts.find(n=>n!==headline&&n!==date&&!(lockup&&isInside(n,lockup)));
+  // Additional text: the longest of the remaining texts. Short marks (18+, a two-letter tag) are not body text.
+  const body=freeTexts.filter(n=>n!==headline&&n!==date&&!(lockup&&isInside(n,lockup))&&n.characters.trim().length>=4).sort((a,b)=>b.characters.length-a.characters.length)[0];
   const roles:Record<Role,string>={logo:'',headline:'',date:'',body:'',cta:'',visual:''};for(const k of ROLE_KEYS){const n=({logo,headline,date,body,cta,visual})[k];roles[k]=n?n.id:'';}
   let bg={r:.0314,g:.0706,b:.149};
   const large=[master,...nodes.filter(n=>n.width*n.height>=master.width*master.height*.35)];
@@ -497,10 +503,11 @@ function textStack(assets:Assets,frame:FrameNode,b:Layout,m:Metrics,options:Opti
   const minimum=options.minFont;
   // Smallest headline allowed: the threshold applies to its smallest styled run when the master mixes sizes.
   const floor=head&&options.enforceMinFont?minimum*(head.base/(head.min||head.base)):3;
+  // A footnote (under half the headline's size in the master) never grows to the headline: it stays well below it.
   // Secondary text is kept at the minimum size while that fits; when it does not, it follows the master's proportion
   // to the headline (a footnote stays a footnote) and is reported as small.
   let relaxed=false;
-  const apply=(hs:number)=>{let total=0;for(const it of items){let size=hs*it.ratio;if(it.role!=='headline'&&it.role!=='cta')size=relaxed?Math.max(size,Math.min(5,hs)):Math.max(size,Math.min(minimum,hs));sizeItem(it,size,col.w);total+=it.node.height+(it===items[0]?0:it.gap*hs);}return total;};
+  const apply=(hs:number)=>{let total=0;for(const it of items){let size=hs*it.ratio;if(it.role!=='headline'&&it.role!=='cta')size=relaxed?Math.max(size,Math.min(5,hs)):it.ratio<.5?Math.max(size,Math.min(hs*.62,minimum*.65)):Math.max(size,Math.min(minimum,hs));sizeItem(it,size,col.w);total+=it.node.height+(it===items[0]?0:it.gap*hs);}return total;};
   // Never larger than the master's own headline scaled by the larger side ratio.
   // Prefer the master's own line breaks: size the headline so its longest line fits the column,
   // unless that would make it far smaller than the format suggests — then let it wrap.
@@ -694,7 +701,7 @@ function proportionalVariant(template:DesignNode,parent:FrameNode,w:number,h:num
 const SOFT_LIMIT=.3; // |ln| of the change in proportions: up to about 1.35×
 type SoftUnit={node:DesignNode;box:Box;centred:boolean;span:boolean;role?:Role;font:number};
 // content — the box around all units; reserve — the master keeps wide spare margins around it (room for cropping).
-type Soft={scene:FrameNode;block:{node:DesignNode;box:Box}|null;units:SoftUnit[];minText:number;content:Box;reserve:boolean};
+type Soft={scene:FrameNode;block:{node:DesignNode;box:Box}|null;units:SoftUnit[];minText:number;fonts:number[];content:Box;reserve:boolean};
 // A master drawn with spare margins: all its text sits well inside, at least 14% of the shorter side from every edge.
 // The margins are picture reserve, not design, so formats are cut from the master around the content.
 const RESERVE=.14,SOFT_PAD=.07,SOFT_BG=1.6;
@@ -740,7 +747,7 @@ async function prepareSoft(src:Source,sources:Assets,stage:FrameNode,warnings:Se
   if(parts.fg.length>200)throw new Error('в мастере больше 200 отдельных элементов.');
   const roleOf=new Map<string,Role>();for(const k of ROLE_KEYS){const n=sources[k];if(n)roleOf.set(n.id,k);}
   const rel=(b:Rect):Box=>({x:b.x-mb.x,y:b.y-mb.y,w:b.width,h:b.height}),t=Math.max(1,Math.min(mb.width,mb.height)*.015);
-  const units:SoftUnit[]=[];let minText=Infinity;
+  const units:SoftUnit[]=[],fonts:number[]=[];let minText=Infinity;
   for(const u of parts.fg){
     const role=roleOf.get(u.id),bb=(role==='visual'&&visibleRect(u,master))||u.absoluteBoundingBox;if(!bb)continue;
     const missing=await loadNodeFonts(u);let n:DesignNode;
@@ -753,7 +760,7 @@ async function prepareSoft(src:Source,sources:Assets,stage:FrameNode,warnings:Se
       if(c)n=c;else{n=copyOf(u);stage.appendChild(n);resetPosition(n);n.relativeTransform=relativeToMaster(u,master);}
     }
     n.name=role?ROLE_NAMES[role]:u.name;
-    const fm=fontMetrics(u);if(fm.min>0)minText=Math.min(minText,fm.min);
+    const fm=fontMetrics(u);if(fm.min>0){minText=Math.min(minText,fm.min);fonts.push(fm.min);}
     const box=rel(bb);
     // A plain bar or plate that runs from edge to edge keeps running from edge to edge.
     const flat=u.type==='RECTANGLE'&&!imagePaint(u)&&Math.abs(u.rotation)<.01;
@@ -769,7 +776,7 @@ async function prepareSoft(src:Source,sources:Assets,stage:FrameNode,warnings:Se
     if(r)block={node:n,box:rel(r)};}
   const solid=units.filter(u=>!u.span),cx=Math.min(...solid.map(u=>u.box.x)),cy=Math.min(...solid.map(u=>u.box.y));
   const content=solid.length?{x:cx,y:cy,w:Math.max(...solid.map(u=>u.box.x+u.box.w))-cx,h:Math.max(...solid.map(u=>u.box.y+u.box.h))-cy}:{x:0,y:0,w:mb.width,h:mb.height};
-  return {scene,block,units,minText:Number.isFinite(minText)?minText:0,content,reserve:!!src.reserve&&solid.length>0};
+  return {scene,block,units,minText:Number.isFinite(minText)?minText:0,fonts,content,reserve:!!src.reserve&&solid.length>0};
 }
 // New start of a block along one axis. lo/size — the block in the master, M — the master's length, T — the format's.
 // A block near an edge keeps its scaled margin to that edge; a block in the middle keeps its relative centre.
@@ -829,7 +836,12 @@ function softVariant(soft:Soft,parent:FrameNode,w:number,h:number,master:MasterN
 }
 // Small elements with text that have no role (an age mark, a badge) in a format built by the schemes: each goes to
 // the corner it has in the master, level with the logo when both are at the top, and moves on if the place is taken.
-function placeExtras(frame:FrameNode,soft:Soft,w:number,h:number,k:number,minFont:number,warnings:Set<string>,label:string){
+function placeExtras(frame:FrameNode,soft:Soft,w:number,h:number,k:number,minFont:number,warnings:Set<string>,label:string,map:((u:number,v:number)=>{x:number;y:number})|null,luma:number[]|null){
+  // Worst contrast of a text colour against the background under a spot (null — the background is not analysed).
+  const contrast=(b:Box,T:number|null)=>{if(!map||!luma||T===null)return null;const N=Math.round(Math.sqrt(luma.length)),o=map(0,0),e=map(1,1);let worst=Infinity;
+    for(let yy=0;yy<3;yy++)for(let xx=0;xx<4;xx++){const u=(b.x+b.w*(xx+.5)/4-o.x)/(e.x-o.x),v=(b.y+b.h*(yy+.5)/3-o.y)/(e.y-o.y);if(u<0||u>1||v<0||v>1)continue;
+      const L=luma[Math.min(N-1,Math.floor(v*N))*N+Math.min(N-1,Math.floor(u*N))];worst=Math.min(worst,(Math.max(L,T)+.05)/(Math.min(L,T)+.05));}
+    return Number.isFinite(worst)?worst:null;};
   const C=soft.content,taken:Box[]=[];for(const c of frame.children)if((Object.values(ROLE_NAMES) as string[]).includes(c.name)){const b=relBox(c,frame);if(b)taken.push(b);}
   const logoN=frame.children.find(c=>c.name===ROLE_NAMES.logo),lb=logoN?relBox(logoN,frame):null,mg=Math.max(4,.05*Math.min(w,h));
   for(const u of soft.units){if(u.role||u.span||!u.font||u.box.w*u.box.h>C.w*C.h*.08)continue;
@@ -837,7 +849,9 @@ function placeExtras(frame:FrameNode,soft:Soft,w:number,h:number,k:number,minFon
     const right=u.box.x+u.box.w/2>C.x+C.w/2,top=u.box.y+u.box.h/2<C.y+C.h/2;
     const spot=(r:boolean,tp:boolean):Box=>{const level=tp&&lb&&lb.y+lb.h/2<h*.45,mx=level?Math.max(mg,Math.min(lb!.x,w-lb!.x-lb!.w)):Math.max(mg,.03*w);
       return {x:r?w-mx-ew:mx,y:level?lb!.y+lb!.h/2-eh/2:tp?mg:h-mg-eh,w:ew,h:eh};};
-    const place=[spot(right,top),spot(!right,top),spot(right,!top),spot(!right,!top)].find(b=>!taken.some(o=>overlap(o,b)>0));
+    // The first free corner where the element reads against the picture; if it reads nowhere, the first free one.
+    const open=[spot(right,top),spot(!right,top),spot(right,!top),spot(!right,!top)].filter(b=>!taken.some(o=>overlap(o,b)>0)),T=textLuminance(u.node);
+    const place=open.find(b=>{const c=contrast(b,T);return c===null||c>=3;})||open[0];
     if(!place){warnings.add(label+': элемент «'+u.node.name.slice(0,30)+'» не поместился и не перенесён.');continue;}
     const n=u.node.clone();frame.appendChild(n);n.rescale(scale);const cur=relBox(n,frame);if(cur){n.x+=place.x-cur.x;n.y+=place.y-cur.y;}taken.push(place);
   }
@@ -941,7 +955,8 @@ async function prepareSource(src:Source,stage:FrameNode,warnings:Set<string>,nee
 async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unknown,input:Options,progress:(done:number,total:number)=>void|Promise<void>=()=>{},isCancelled:()=>boolean=()=>false){
   const sizes=validateSizes(rawSizes),options=normalizeOptions(input),ai=validatePlan(options.aiPlan,sizes),warnings=new Set<string>();
   const list:Source[]=[{master,roles,options,sources:{},assets:{},metrics:null,template:null,ready:false,primary:true},...await alternateSources(master,options,warnings)];
-  for(const src of list)src.reserve=hasReserve(src.master);
+  // An object frame drawn over (almost) the whole picture marks no object: fitting it would only shrink the picture.
+  for(const src of list){src.reserve=hasReserve(src.master);const sj=src.options.subject;if(sj&&sj.w*sj.h>=.65)src.options.subject=null;}
   const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});const exact=!!vo.preserveMaster&&!src.reserve&&sameAspect(src.master,w,h);return {w,h,src,exact,soft:!!vo.preserveMaster&&!exact&&(!!src.reserve||aspectDistance(src.master,w,h)<=SOFT_LIMIT),vo};});
   const stage=figma.createFrame();figma.currentPage.appendChild(stage);stage.name='Banner Adapt · подготовка';stage.fills=[];stage.visible=false;stage.x=figma.viewport.center.x;stage.y=figma.viewport.center.y;
   let output:FrameNode|null=null,completed=0;const results:{id:string;w:number;h:number;name:string;status:Status;issues:Issue[]}[]=[];
@@ -960,9 +975,10 @@ async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unk
       const opts:Options={...vo,isBackground:src.options.isBackground,subject:vo.focusOverride?vo.subject:ai?ai.subject:src.options.subject,aiAnchor:ai?.anchor,luma:src.options.luma,busy:src.options.busy,shade:src.options.shade,edge:src.options.edge};
       // Each format is isolated: an error removes only its own partial layers and leaves a Failed placeholder.
       const before=output.children.length,label=w+'×'+h,mine=new Set<string>();let v:FrameNode,issues:Issue[];
-      // Soft adaptation only where the master's smallest text stays readable; smaller formats are re-laid by the schemes.
+      // Soft adaptation only where every text stays readable: not below the minimum font, and text the master already
+      // sets smaller than the minimum may lose a quarter at most. Smaller formats are re-laid by the schemes.
       // The background must not outgrow the elements too far either: then the picture no longer matches the text.
-      const sc=soft&&src.soft?softFrame(src.soft,src.master,w,h):null,sf=sc&&src.soft&&(!src.soft.minText||src.soft.minText*sc.s>=options.minFont-.01)&&sc.bg<=sc.s*SOFT_BG?src.soft:null;let kept=false;
+      const sc=soft&&src.soft?softFrame(src.soft,src.master,w,h):null,sf=sc&&src.soft&&src.soft.fonts.every(f=>f*sc.s>=Math.min(options.minFont,f*.75)-.01)&&sc.bg<=sc.s*SOFT_BG?src.soft:null;let kept=false;
       try{
         const geo={map:null as ((u:number,v:number)=>{x:number;y:number})|null};
         let made:FrameNode|null=exact&&src.template?proportionalVariant(src.template,output,w,h,src.master,mine,options.minFont):null;
@@ -971,7 +987,7 @@ async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unk
         if(!made){made=createVariant(src.assets,output,w,h,opts,src.metrics!,mine,geo);
           // Elements without a role still travel: scaled like the headline of this format.
           if(src.soft&&src.metrics){const head=made.children.find(c=>c.name===ROLE_NAMES.headline),hm=head&&head.type==='TEXT'?fontMetrics(head).max:0;
-            try{placeExtras(made,src.soft,w,h,hm?hm/src.metrics.head:Math.min(w/src.master.width,h/src.master.height),options.minFont,mine,label);}catch(err){mine.add(label+': элементы без роли не перенесены ('+messageText(err)+').');}}}
+            try{placeExtras(made,src.soft,w,h,hm?hm/src.metrics.head:Math.min(w/src.master.width,h/src.master.height),options.minFont,mine,label,geo.map,opts.luma||null);}catch(err){mine.add(label+': элементы без роли не перенесены ('+messageText(err)+').');}}}
         v=made;
         if(!src.primary)v.name+=' · из «'+src.master.name+'»';
         if(ai&&!exact)v.setSharedPluginData(DATA_NS,'aiFraming',ai.core?'core':'whole');

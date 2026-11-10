@@ -117,7 +117,7 @@ input[type=checkbox]:disabled{opacity:.4;cursor:not-allowed}
 try{window.localStorage.getItem('x')}catch(e){const m=new Map();Object.defineProperty(window,'localStorage',{value:{getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k),clear:()=>m.clear(),key:i=>Array.from(m.keys())[i]??null,get length(){return m.size}},configurable:true})}
 </script></head><body><div id="plugin-root">
 <header>
-<div class="row between"><h1>Banner Adapt</h1><span class="tag" id="tag">1.9 · Локально</span></div>
+<div class="row between"><h1>Banner Adapt</h1><span class="tag" id="tag">1.10 · Локально</span></div>
 <p class="muted">Один мастер. Разные композиции.</p>
 <nav class="tabs" role="tablist" aria-label="Шаги работы"><button type="button" class="tab active" role="tab" id="tabbtn-master" data-tab="master" aria-selected="true" aria-controls="tab-master"><span class="step">01</span>Мастер</button><button type="button" class="tab" role="tab" id="tabbtn-formats" data-tab="formats" aria-selected="false" aria-controls="tab-formats"><span class="step">02</span>Форматы</button><button type="button" class="tab" role="tab" id="tabbtn-look" data-tab="look" aria-selected="false" aria-controls="tab-look"><span class="step">03</span>Композиция</button><button type="button" class="tab" role="tab" id="tabbtn-result" data-tab="result" aria-selected="false" aria-controls="tab-result"><span class="step">04</span>Результат</button></nav>
 </header>
@@ -289,15 +289,25 @@ function sceneStats(px,N){
   const bl=blur(lum,N,1),gr=new Float32Array(n);for(let y=1;y<N-1;y++)for(let x=1;x<N-1;x++){const i=y*N+x;gr[i]=Math.hypot(bl[i+1]-bl[i-1],bl[i+N]-bl[i-N]);}
   const top=Math.max(1e-6,pct(gr,.95)),bz=blur(gr.map(v=>Math.min(1,v/top)),N,2),busy=[];
   for(let gy=0;gy<G;gy++)for(let gx=0;gx<G;gx++){let s=0,c=0;for(let y=Math.floor(gy*N/G);y<Math.floor((gy+1)*N/G);y++)for(let x=Math.floor(gx*N/G);x<Math.floor((gx+1)*N/G);x++){s+=bz[y*N+x];c++;}busy.push(Math.round(Math.min(1,s/Math.max(1,c))*1000)/1000);}
-  return {luma:grid,busy,shade,edge,subject:(edge&&objectBox(px,N,edge))||salientBox(lum,chroma,N)};
+  return {luma:grid,busy,shade,edge,subject:(edge&&objectBox(px,N,edge))||darkObject(px,N,lum,shade)||salientBox(lum,chroma,N)};
+}
+// A lit object in a dark scene whose edges are not one flat colour: everything clearly brighter than the shadows.
+function darkObject(px,N,lum,shade){
+  let s=0;for(let i=0;i<lum.length;i++)s+=lum[i];return s/lum.length>.22?null:objectBox(px,N,shade);
 }
 function objectBox(px,N,hex){
-  const c=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)),xs=[],ys=[];
-  for(let y=0;y<N;y++)for(let x=0;x<N;x++){const i=(y*N+x)*4;if(Math.max(Math.abs(px[i]-c[0]),Math.abs(px[i+1]-c[1]),Math.abs(px[i+2]-c[2]))>40){xs.push(x);ys.push(y);}}
-  if(xs.length<N*N*.02)return null;xs.sort((a,b)=>a-b);ys.sort((a,b)=>a-b);
-  const q=(v,p)=>v[Math.min(v.length-1,Math.floor(p*v.length))],pad=.02;
-  const x=Math.max(0,q(xs,.02)/N-pad),y=Math.max(0,q(ys,.02)/N-pad),w=Math.min(1,(q(xs,.98)+1)/N+pad)-x,h=Math.min(1,(q(ys,.98)+1)/N+pad)-y;
-  return w*h>.95?null:{x:+x.toFixed(4),y:+y.toFixed(4),w:+w.toFixed(4),h:+h.toFixed(4)};
+  const c=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)),q=(v,p)=>v[Math.min(v.length-1,Math.floor(p*v.length))],pad=.02;
+  const at=thr=>{const xs=[],ys=[];
+    for(let y=0;y<N;y++)for(let x=0;x<N;x++){const i=(y*N+x)*4;if(Math.max(Math.abs(px[i]-c[0]),Math.abs(px[i+1]-c[1]),Math.abs(px[i+2]-c[2]))>thr){xs.push(x);ys.push(y);}}
+    if(xs.length<N*N*.015)return null;xs.sort((a,b)=>a-b);ys.sort((a,b)=>a-b);
+    const x=Math.max(0,q(xs,.02)/N-pad),y=Math.max(0,q(ys,.02)/N-pad),w=Math.min(1,(q(xs,.98)+1)/N+pad)-x,h=Math.min(1,(q(ys,.98)+1)/N+pad)-y;
+    return {x:+x.toFixed(4),y:+y.toFixed(4),w:+w.toFixed(4),h:+h.toFixed(4)};};
+  // Glows and haze around the object differ from the backdrop too: raise the threshold until the box is a real
+  // object (at most half the picture) and stops shrinking — the haze is gone. If it never is, keep the first box as before.
+  const steps=[40,60,80,110,140].map(at);let last=null;
+  for(let i=0;i<steps.length;i++){const b=steps[i],n=steps[i+1];if(!b)break;if(b.w*b.h>.5)continue;last=b;if(!n||n.w*n.h>=b.w*b.h*.8)return b;}
+  if(last)return last;
+  const b=steps[0];return b&&b.w*b.h<=.95?b:null;
 }
 // Flat backdrop: if at least three sides of the picture are one colour (an object shot on a plain backdrop,
 // possibly touching one edge), the plugin may extend the picture with that colour. Median, so glows do not tint it.
@@ -443,7 +453,7 @@ function aiModel(){return aiCfg.model||aiProvider().model;}
 function sameBox(a,b){return !!a&&!!b&&['x','y','w','h'].every(k=>Math.abs(a[k]-b[k])<.002);}
 function hashBytes(b){b=b instanceof Uint8Array?b:new Uint8Array(b);let h=0x811c9dc5;for(let i=0;i<b.length;i++){h^=b[i];h=Math.imul(h,0x01000193)>>>0;}return 'f'+h.toString(16)+'-'+b.length;}
 function base64(bytes){let s='';for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode.apply(null,Array.from(bytes.subarray(i,i+0x8000)));return btoa(s);}
-function renderAiConfig(){const pr=aiCfg.provider;$('ai-enabled').checked=aiOn();$('ai-provider').value=pr;$('ai-model').value=aiCfg.model;$('ai-model').placeholder=pr==='bridge'?'auto — haiku или модель Codex':aiProvider().model||'название модели';$('ai-endpoint').value=aiCfg.endpoint;$('ai-endpoint').placeholder=pr==='bridge'?AI_PROVIDERS.bridge.url:'http://localhost:11434/v1/chat/completions';$('ai-key').value=aiCfg.key;$('ai-endpoint-row').hidden=pr!=='custom'&&pr!=='bridge';$('ai-mk-row').hidden=pr==='chat';$('ai-chat').hidden=pr!=='chat';$('ai-bridge-help').hidden=pr!=='bridge';$('ai-key-label').textContent=pr==='bridge'?'Код моста':'Ключ API';$('ai-key').placeholder=pr==='bridge'?'ba-…':'вставьте ключ';$('ai-run').hidden=pr==='chat';$('ai-section').classList.toggle('ai-off',!aiOn());$('tag').textContent='1.9 · '+(aiOn()?'AI-кадрирование':'Локально');aiStatus();}
+function renderAiConfig(){const pr=aiCfg.provider;$('ai-enabled').checked=aiOn();$('ai-provider').value=pr;$('ai-model').value=aiCfg.model;$('ai-model').placeholder=pr==='bridge'?'auto — haiku или модель Codex':aiProvider().model||'название модели';$('ai-endpoint').value=aiCfg.endpoint;$('ai-endpoint').placeholder=pr==='bridge'?AI_PROVIDERS.bridge.url:'http://localhost:11434/v1/chat/completions';$('ai-key').value=aiCfg.key;$('ai-endpoint-row').hidden=pr!=='custom'&&pr!=='bridge';$('ai-mk-row').hidden=pr==='chat';$('ai-chat').hidden=pr!=='chat';$('ai-bridge-help').hidden=pr!=='bridge';$('ai-key-label').textContent=pr==='bridge'?'Код моста':'Ключ API';$('ai-key').placeholder=pr==='bridge'?'ba-…':'вставьте ключ';$('ai-run').hidden=pr==='chat';$('ai-section').classList.toggle('ai-off',!aiOn());$('tag').textContent='1.10 · '+(aiOn()?'AI-кадрирование':'Локально');aiStatus();}
 function aiStatus(){const n=$('ai-note');if(!n)return;n.classList.toggle('error',!!aiError&&aiOn());
   if(!aiOn()){n.textContent='AI-кадрирование выключено — работает локальный анализ.';}
   else if(aiError)n.textContent='AI: '+aiError+' Использован локальный анализ.';

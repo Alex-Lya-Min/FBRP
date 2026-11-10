@@ -359,7 +359,17 @@ function analyze(master) {
     const date = freeTexts.find(n => DATE.test(n.characters));
     const headline = freeTexts.filter(n => n !== date).sort((a, b) => { const sz = (n) => typeof n.fontSize === 'number' ? n.fontSize : 20; return sz(b) - sz(a) || b.width * b.height - a.width * a.height; })[0];
     const images = nodes.filter(imagePaint).sort((a, b) => b.width * b.height - a.width * a.height);
-    const visual = nodes.find(n => /^(hero|visual|key visual|имидж|иллюстрация)/i.test(n.name)) || images[0];
+    let visual = nodes.find(n => /^(hero|visual|key visual|имидж|иллюстрация)/i.test(n.name));
+    // A picture assembled from several layers (image, masks, fades) in one wrapper is taken with the wrapper:
+    // the outermost one that holds no text, button or logo.
+    if (!visual && images[0]) {
+        visual = images[0];
+        for (let p = visual.parent; p && p.id !== master.id && isMaster(p); p = p.parent) {
+            if (descendants(p, 400).some(n => n.type === 'TEXT') || (cta && isInside(cta, p)) || (namedLogo && isInside(namedLogo, p)))
+                break;
+            visual = p;
+        }
+    }
     let logo = namedLogo;
     if (!logo)
         logo = nodes.find(n => n.parent === master && ['FRAME', 'GROUP'].includes(n.type) && n !== cta && n !== visual && descendants(n).some(x => x.type === 'VECTOR') && !descendants(n).some(x => x.type === 'TEXT' || imagePaint(x)));
@@ -369,7 +379,8 @@ function analyze(master) {
             logo = up;
     }
     const lockup = logo;
-    const body = freeTexts.find(n => n !== headline && n !== date && !(lockup && isInside(n, lockup)));
+    // Additional text: the longest of the remaining texts. Short marks (18+, a two-letter tag) are not body text.
+    const body = freeTexts.filter(n => n !== headline && n !== date && !(lockup && isInside(n, lockup)) && n.characters.trim().length >= 4).sort((a, b) => b.characters.length - a.characters.length)[0];
     const roles = { logo: '', headline: '', date: '', body: '', cta: '', visual: '' };
     for (const k of ROLE_KEYS) {
         const n = ({ logo, headline, date, body, cta, visual })[k];
@@ -979,13 +990,14 @@ function textStack(assets, frame, b, m, options, warnings, label, w, h) {
     const minimum = options.minFont;
     // Smallest headline allowed: the threshold applies to its smallest styled run when the master mixes sizes.
     const floor = head && options.enforceMinFont ? minimum * (head.base / (head.min || head.base)) : 3;
+    // A footnote (under half the headline's size in the master) never grows to the headline: it stays well below it.
     // Secondary text is kept at the minimum size while that fits; when it does not, it follows the master's proportion
     // to the headline (a footnote stays a footnote) and is reported as small.
     let relaxed = false;
     const apply = (hs) => { let total = 0; for (const it of items) {
         let size = hs * it.ratio;
         if (it.role !== 'headline' && it.role !== 'cta')
-            size = relaxed ? Math.max(size, Math.min(5, hs)) : Math.max(size, Math.min(minimum, hs));
+            size = relaxed ? Math.max(size, Math.min(5, hs)) : it.ratio < .5 ? Math.max(size, Math.min(hs * .62, minimum * .65)) : Math.max(size, Math.min(minimum, hs));
         sizeItem(it, size, col.w);
         total += it.node.height + (it === items[0] ? 0 : it.gap * hs);
     } return total; };
@@ -1493,7 +1505,7 @@ async function prepareSoft(src, sources, stage, warnings) {
             roleOf.set(n.id, k);
     }
     const rel = (b) => ({ x: b.x - mb.x, y: b.y - mb.y, w: b.width, h: b.height }), t = Math.max(1, Math.min(mb.width, mb.height) * .015);
-    const units = [];
+    const units = [], fonts = [];
     let minText = Infinity;
     for (const u of parts.fg) {
         const role = roleOf.get(u.id), bb = (role === 'visual' && visibleRect(u, master)) || u.absoluteBoundingBox;
@@ -1521,8 +1533,10 @@ async function prepareSoft(src, sources, stage, warnings) {
         }
         n.name = role ? ROLE_NAMES[role] : u.name;
         const fm = fontMetrics(u);
-        if (fm.min > 0)
+        if (fm.min > 0) {
             minText = Math.min(minText, fm.min);
+            fonts.push(fm.min);
+        }
         const box = rel(bb);
         // A plain bar or plate that runs from edge to edge keeps running from edge to edge.
         const flat = u.type === 'RECTANGLE' && !imagePaint(u) && Math.abs(u.rotation) < .01;
@@ -1552,7 +1566,7 @@ async function prepareSoft(src, sources, stage, warnings) {
     }
     const solid = units.filter(u => !u.span), cx = Math.min(...solid.map(u => u.box.x)), cy = Math.min(...solid.map(u => u.box.y));
     const content = solid.length ? { x: cx, y: cy, w: Math.max(...solid.map(u => u.box.x + u.box.w)) - cx, h: Math.max(...solid.map(u => u.box.y + u.box.h)) - cy } : { x: 0, y: 0, w: mb.width, h: mb.height };
-    return { scene, block, units, minText: Number.isFinite(minText) ? minText : 0, content, reserve: !!src.reserve && solid.length > 0 };
+    return { scene, block, units, minText: Number.isFinite(minText) ? minText : 0, fonts, content, reserve: !!src.reserve && solid.length > 0 };
 }
 // New start of a block along one axis. lo/size — the block in the master, M — the master's length, T — the format's.
 // A block near an edge keeps its scaled margin to that edge; a block in the middle keeps its relative centre.
@@ -1672,7 +1686,23 @@ function softVariant(soft, parent, w, h, master, options, warnings, geometry) {
 }
 // Small elements with text that have no role (an age mark, a badge) in a format built by the schemes: each goes to
 // the corner it has in the master, level with the logo when both are at the top, and moves on if the place is taken.
-function placeExtras(frame, soft, w, h, k, minFont, warnings, label) {
+function placeExtras(frame, soft, w, h, k, minFont, warnings, label, map, luma) {
+    // Worst contrast of a text colour against the background under a spot (null — the background is not analysed).
+    const contrast = (b, T) => {
+        if (!map || !luma || T === null)
+            return null;
+        const N = Math.round(Math.sqrt(luma.length)), o = map(0, 0), e = map(1, 1);
+        let worst = Infinity;
+        for (let yy = 0; yy < 3; yy++)
+            for (let xx = 0; xx < 4; xx++) {
+                const u = (b.x + b.w * (xx + .5) / 4 - o.x) / (e.x - o.x), v = (b.y + b.h * (yy + .5) / 3 - o.y) / (e.y - o.y);
+                if (u < 0 || u > 1 || v < 0 || v > 1)
+                    continue;
+                const L = luma[Math.min(N - 1, Math.floor(v * N)) * N + Math.min(N - 1, Math.floor(u * N))];
+                worst = Math.min(worst, (Math.max(L, T) + .05) / (Math.min(L, T) + .05));
+            }
+        return Number.isFinite(worst) ? worst : null;
+    };
     const C = soft.content, taken = [];
     for (const c of frame.children)
         if (Object.values(ROLE_NAMES).includes(c.name)) {
@@ -1690,7 +1720,9 @@ function placeExtras(frame, soft, w, h, k, minFont, warnings, label) {
             const level = tp && lb && lb.y + lb.h / 2 < h * .45, mx = level ? Math.max(mg, Math.min(lb.x, w - lb.x - lb.w)) : Math.max(mg, .03 * w);
             return { x: r ? w - mx - ew : mx, y: level ? lb.y + lb.h / 2 - eh / 2 : tp ? mg : h - mg - eh, w: ew, h: eh };
         };
-        const place = [spot(right, top), spot(!right, top), spot(right, !top), spot(!right, !top)].find(b => !taken.some(o => overlap(o, b) > 0));
+        // The first free corner where the element reads against the picture; if it reads nowhere, the first free one.
+        const open = [spot(right, top), spot(!right, top), spot(right, !top), spot(!right, !top)].filter(b => !taken.some(o => overlap(o, b) > 0)), T = textLuminance(u.node);
+        const place = open.find(b => { const c = contrast(b, T); return c === null || c >= 3; }) || open[0];
         if (!place) {
             warnings.add(label + ': элемент «' + u.node.name.slice(0, 30) + '» не поместился и не перенесён.');
             continue;
@@ -1908,8 +1940,13 @@ async function prepareSource(src, stage, warnings, needAdapt, needExact, needSof
 async function generate(master, roles, rawSizes, input, progress = () => { }, isCancelled = () => false) {
     const sizes = validateSizes(rawSizes), options = normalizeOptions(input), ai = validatePlan(options.aiPlan, sizes), warnings = new Set();
     const list = [{ master, roles, options, sources: {}, assets: {}, metrics: null, template: null, ready: false, primary: true }, ...await alternateSources(master, options, warnings)];
-    for (const src of list)
+    // An object frame drawn over (almost) the whole picture marks no object: fitting it would only shrink the picture.
+    for (const src of list) {
         src.reserve = hasReserve(src.master);
+        const sj = src.options.subject;
+        if (sj && sj.w * sj.h >= .65)
+            src.options.subject = null;
+    }
     const plan = sizes.map(([w, h]) => { const src = pickSource(list, w, h), vo = variantOptions(src.options, w + 'x' + h, src.primary ? ai : {}); const exact = !!vo.preserveMaster && !src.reserve && sameAspect(src.master, w, h); return { w, h, src, exact, soft: !!vo.preserveMaster && !exact && (!!src.reserve || aspectDistance(src.master, w, h) <= SOFT_LIMIT), vo }; });
     const stage = figma.createFrame();
     figma.currentPage.appendChild(stage);
@@ -1964,9 +2001,10 @@ async function generate(master, roles, rawSizes, input, progress = () => { }, is
             // Each format is isolated: an error removes only its own partial layers and leaves a Failed placeholder.
             const before = output.children.length, label = w + '×' + h, mine = new Set();
             let v, issues;
-            // Soft adaptation only where the master's smallest text stays readable; smaller formats are re-laid by the schemes.
+            // Soft adaptation only where every text stays readable: not below the minimum font, and text the master already
+            // sets smaller than the minimum may lose a quarter at most. Smaller formats are re-laid by the schemes.
             // The background must not outgrow the elements too far either: then the picture no longer matches the text.
-            const sc = soft && src.soft ? softFrame(src.soft, src.master, w, h) : null, sf = sc && src.soft && (!src.soft.minText || src.soft.minText * sc.s >= options.minFont - .01) && sc.bg <= sc.s * SOFT_BG ? src.soft : null;
+            const sc = soft && src.soft ? softFrame(src.soft, src.master, w, h) : null, sf = sc && src.soft && src.soft.fonts.every(f => f * sc.s >= Math.min(options.minFont, f * .75) - .01) && sc.bg <= sc.s * SOFT_BG ? src.soft : null;
             let kept = false;
             try {
                 const geo = { map: null };
@@ -1989,7 +2027,7 @@ async function generate(master, roles, rawSizes, input, progress = () => { }, is
                     if (src.soft && src.metrics) {
                         const head = made.children.find(c => c.name === ROLE_NAMES.headline), hm = head && head.type === 'TEXT' ? fontMetrics(head).max : 0;
                         try {
-                            placeExtras(made, src.soft, w, h, hm ? hm / src.metrics.head : Math.min(w / src.master.width, h / src.master.height), options.minFont, mine, label);
+                            placeExtras(made, src.soft, w, h, hm ? hm / src.metrics.head : Math.min(w / src.master.width, h / src.master.height), options.minFont, mine, label, geo.map, opts.luma || null);
                         }
                         catch (err) {
                             mine.add(label + ': элементы без роли не перенесены (' + messageText(err) + ').');
