@@ -1,4 +1,4 @@
-// Banner Adapt 1.13 — local layout engine. Optional AI framing: one small request per master with the user's own key,
+// Banner Adapt 1.14 — local layout engine. Optional AI framing: one small request per master with the user's own key,
 // the answer is the scene geometry only; every format is still computed locally.
 // Author: Алексей Лямин (Alex Lyamin) · https://alexlyamin.framer.website/ru-home
 type Role = 'logo'|'headline'|'date'|'body'|'cta'|'visual';
@@ -716,7 +716,9 @@ type SoftUnit={node:DesignNode;box:Box;centred:boolean;span:boolean;role?:Role;f
 type Soft={scene:FrameNode;block:{node:DesignNode;box:Box}|null;units:SoftUnit[];minText:number;fonts:number[];content:Box;reserve:boolean};
 // A master drawn with spare margins: all its text sits well inside, at least 14% of the shorter side from every edge.
 // The margins are picture reserve, not design, so formats are cut from the master around the content.
-const RESERVE=.14,SOFT_PAD=.07,SOFT_BG=1.6;
+// SOFT_BG — how much larger than the elements the background may get. A tall format with a background picture
+// allows more: the picture has to fill the height, and the text keeps the master's size and order.
+const RESERVE=.14,SOFT_PAD=.07,SOFT_BG=1.6,SOFT_BG_TALL=2.6;
 function hasReserve(master:MasterNode){
   const mb=master.absoluteBoundingBox,boxes=descendants(master,3000).filter(n=>n.type==='TEXT').map(n=>n.absoluteBoundingBox).filter((b):b is Rect=>!!b);if(!mb||!boxes.length)return false;
   const t=RESERVE*Math.min(mb.width,mb.height);
@@ -872,7 +874,7 @@ function placeExtras(frame:FrameNode,soft:Soft,w:number,h:number,k:number,minFon
     const spot=(r:boolean,tp:boolean):Box=>{const level=tp&&lb&&lb.y+lb.h/2<h*.45,mx=level?Math.max(mg,Math.min(lb!.x,w-lb!.x-lb!.w)):Math.max(mg,.03*w);
       return {x:r?w-mx-ew:mx,y:level?lb!.y+lb!.h/2-eh/2:tp?mg:h-mg-eh,w:ew,h:eh};};
     // The first free corner where the element reads against the picture; if it reads nowhere, the first free one.
-    const open=[spot(right,top),spot(!right,top),spot(right,!top),spot(!right,!top)].filter(b=>!taken.some(o=>overlap(o,b)>0)),T=textLuminance(u.node);
+    const open=[spot(right,top),spot(!right,top),spot(right,!top),spot(!right,!top)].filter(b=>!taken.some(o=>overlap(o,{x:b.x-b.h*.6,y:b.y-b.h*.3,w:b.w+b.h*1.2,h:b.h*1.6})>0)),T=textLuminance(u.node);
     const place=open.find(b=>{const c=contrast(b,T);return c===null||c>=3;})||open[0];
     if(!place){warnings.add(label+': элемент «'+u.node.name.slice(0,30)+'» не поместился и не перенесён.');continue;}
     const n=u.node.clone();frame.appendChild(n);rescaleSafe(n,scale);const cur=relBox(n,frame);if(cur){n.x+=place.x-cur.x;n.y+=place.y-cur.y;}taken.push(place);
@@ -1004,7 +1006,7 @@ async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unk
       // Soft adaptation where the largest text (the headline) stays at the minimum font or above. Smaller secondary
       // text is reported, as in the schemes — they do not make it larger either. Smaller formats are re-laid by the schemes.
       // The background must not outgrow the elements too far either: then the picture no longer matches the text.
-      const sc=soft&&src.soft?softFrame(src.soft,src.master,w,h,options.platforms):null,sf=sc&&src.soft&&(!src.soft.fonts.length||Math.max(...src.soft.fonts)*sc.s>=options.minFont-.01)&&sc.bg<=sc.s*SOFT_BG?src.soft:null;let kept=false;
+      const sc=soft&&src.soft?softFrame(src.soft,src.master,w,h,options.platforms):null,sf=sc&&src.soft&&(!src.soft.fonts.length||Math.max(...src.soft.fonts)*sc.s>=options.minFont-.01)&&sc.bg<=sc.s*(src.options.isBackground&&h>w?SOFT_BG_TALL:SOFT_BG)?src.soft:null;let kept=false;
       try{
         const geo={map:null as ((u:number,v:number)=>{x:number;y:number})|null};
         let made:FrameNode|null=exact&&src.template?proportionalVariant(src.template,output,w,h,src.master,mine,options.minFont):null;
