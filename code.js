@@ -1413,7 +1413,7 @@ function proportionalVariant(template, parent, w, h, master, warnings, minFont) 
 // background. Units that sit close together move as one block. Each block keeps its scaled distance to the edge it
 // is nearer to (or stays centred), so margins, alignment and gaps come from the master, not from a built-in scheme.
 // Everything scales by the tighter side; the background covers the format.
-const SOFT_LIMIT = .3; // |ln| of the change in proportions: up to about 1.35×
+const SOFT_LIMIT = .45; // |ln| of the change in proportions: up to about 1.55×
 // A master drawn with spare margins: all its text sits well inside, at least 14% of the shorter side from every edge.
 // The margins are picture reserve, not design, so formats are cut from the master around the content.
 const RESERVE = .14, SOFT_PAD = .07, SOFT_BG = 1.6;
@@ -1690,6 +1690,11 @@ function softVariant(soft, parent, w, h, master, options, warnings, geometry) {
     if (options.isBackground && geometry.map && options.luma)
         for (const c of measureContrast(frame, options, geometry.map).filter(c => c.ratio < 3))
             warnings.add(label + ': низкий контраст ' + c.label + ' с фоном (' + c.ratio.toFixed(1) + ':1) — проверьте макет.');
+    {
+        const small = soft.units.filter(u => u.font > 0 && u.font * s < options.minFont - .01);
+        if (small.length)
+            warnings.add(label + ': мелкий текст — ' + small.slice(0, 3).map(u => '«' + u.node.name.slice(0, 24) + '» ' + (u.font * s).toFixed(1) + ' px').join(', ') + (small.length > 3 ? ' и ещё ' + (small.length - 3) : '') + '.');
+    }
     frame.setSharedPluginData(DATA_NS, 'size', w + 'x' + h);
     return frame;
 }
@@ -1969,6 +1974,7 @@ async function generate(master, roles, rawSizes, input, progress = () => { }, is
     figma.currentPage.appendChild(stage);
     stage.name = 'Banner Adapt · подготовка';
     stage.fills = [];
+    stage.clipsContent = false;
     stage.visible = false;
     stage.x = figma.viewport.center.x;
     stage.y = figma.viewport.center.y;
@@ -2018,10 +2024,10 @@ async function generate(master, roles, rawSizes, input, progress = () => { }, is
             // Each format is isolated: an error removes only its own partial layers and leaves a Failed placeholder.
             const before = output.children.length, label = w + '×' + h, mine = new Set();
             let v, issues;
-            // Soft adaptation only where every text stays readable: not below the minimum font, and text the master already
-            // sets smaller than the minimum may lose a quarter at most. Smaller formats are re-laid by the schemes.
+            // Soft adaptation where the largest text (the headline) stays at the minimum font or above. Smaller secondary
+            // text is reported, as in the schemes — they do not make it larger either. Smaller formats are re-laid by the schemes.
             // The background must not outgrow the elements too far either: then the picture no longer matches the text.
-            const sc = soft && src.soft ? softFrame(src.soft, src.master, w, h, options.platforms) : null, sf = sc && src.soft && src.soft.fonts.every(f => f * sc.s >= Math.min(options.minFont, f * .75) - .01) && sc.bg <= sc.s * SOFT_BG ? src.soft : null;
+            const sc = soft && src.soft ? softFrame(src.soft, src.master, w, h, options.platforms) : null, sf = sc && src.soft && (!src.soft.fonts.length || Math.max(...src.soft.fonts) * sc.s >= options.minFont - .01) && sc.bg <= sc.s * SOFT_BG ? src.soft : null;
             let kept = false;
             try {
                 const geo = { map: null };
@@ -2277,6 +2283,9 @@ async function sceneBytes(m, n, roles, scene, ai = false) {
     stage.fills = [];
     stage.x = -100000;
     stage.y = -100000;
+    // A new frame is 100×100 and clips its content, and Figma clips an export by the node's ancestors: without this
+    // the render was the scene's top-left corner only, and the whole background analysis read an empty picture.
+    stage.clipsContent = false;
     try {
         return await exportSmall(scene ? sceneBackground(m, stage, sources) : clippedCopy(n, m, stage) || n, ai);
     }
@@ -2297,6 +2306,7 @@ async function visualPreview(id, mode = 'auto', roles) {
             figma.currentPage.appendChild(stage);
             stage.name = 'Banner Adapt · анализ фона';
             stage.fills = [];
+            stage.clipsContent = false;
             stage.x = -100000;
             stage.y = -100000;
         }

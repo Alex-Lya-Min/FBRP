@@ -1,4 +1,4 @@
-// Banner Adapt 1.11 — local layout engine. Optional AI framing: one small request per master with the user's own key,
+// Banner Adapt 1.12 — local layout engine. Optional AI framing: one small request per master with the user's own key,
 // the answer is the scene geometry only; every format is still computed locally.
 // Author: Алексей Лямин (Alex Lyamin) · https://alexlyamin.framer.website/ru-home
 type Role = 'logo'|'headline'|'date'|'body'|'cta'|'visual';
@@ -698,7 +698,7 @@ function proportionalVariant(template:DesignNode,parent:FrameNode,w:number,h:num
 // background. Units that sit close together move as one block. Each block keeps its scaled distance to the edge it
 // is nearer to (or stays centred), so margins, alignment and gaps come from the master, not from a built-in scheme.
 // Everything scales by the tighter side; the background covers the format.
-const SOFT_LIMIT=.3; // |ln| of the change in proportions: up to about 1.35×
+const SOFT_LIMIT=.45; // |ln| of the change in proportions: up to about 1.55×
 type SoftUnit={node:DesignNode;box:Box;centred:boolean;span:boolean;role?:Role;font:number};
 // content — the box around all units; reserve — the master keeps wide spare margins around it (room for cropping).
 type Soft={scene:FrameNode;block:{node:DesignNode;box:Box}|null;units:SoftUnit[];minText:number;fonts:number[];content:Box;reserve:boolean};
@@ -836,6 +836,7 @@ function softVariant(soft:Soft,parent:FrameNode,w:number,h:number,master:MasterN
     const cur=relBox(n,frame);if(cur){n.x+=x-cur.x;n.y+=y-cur.y;}
   }
   if(options.isBackground&&geometry.map&&options.luma)for(const c of measureContrast(frame,options,geometry.map).filter(c=>c.ratio<3))warnings.add(label+': низкий контраст '+c.label+' с фоном ('+c.ratio.toFixed(1)+':1) — проверьте макет.');
+  {const small=soft.units.filter(u=>u.font>0&&u.font*s<options.minFont-.01);if(small.length)warnings.add(label+': мелкий текст — '+small.slice(0,3).map(u=>'«'+u.node.name.slice(0,24)+'» '+(u.font*s).toFixed(1)+' px').join(', ')+(small.length>3?' и ещё '+(small.length-3):'')+'.');}
   frame.setSharedPluginData(DATA_NS,'size',w+'x'+h);
   return frame;
 }
@@ -966,7 +967,7 @@ async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unk
   // An object frame drawn over (almost) the whole picture marks no object: fitting it would only shrink the picture.
   for(const src of list){src.reserve=hasReserve(src.master);const sj=src.options.subject;if(sj&&sj.w*sj.h>=.65)src.options.subject=null;}
   const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});const exact=!!vo.preserveMaster&&!src.reserve&&sameAspect(src.master,w,h);return {w,h,src,exact,soft:!!vo.preserveMaster&&!exact&&(!!src.reserve||aspectDistance(src.master,w,h)<=SOFT_LIMIT),vo};});
-  const stage=figma.createFrame();figma.currentPage.appendChild(stage);stage.name='Banner Adapt · подготовка';stage.fills=[];stage.visible=false;stage.x=figma.viewport.center.x;stage.y=figma.viewport.center.y;
+  const stage=figma.createFrame();figma.currentPage.appendChild(stage);stage.name='Banner Adapt · подготовка';stage.fills=[];stage.clipsContent=false;stage.visible=false;stage.x=figma.viewport.center.x;stage.y=figma.viewport.center.y;
   let output:FrameNode|null=null,completed=0;const results:{id:string;w:number;h:number;name:string;status:Status;issues:Issue[]}[]=[];
   try{
     for(const src of list){const mine=plan.filter(p=>p.src===src);if(mine.length)await prepareSource(src,stage,warnings,mine.some(p=>!p.exact),mine.some(p=>p.exact),mine.some(p=>!p.exact));}
@@ -983,10 +984,10 @@ async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unk
       const opts:Options={...vo,subjectGuessed:src.options.subjectGuessed,isBackground:src.options.isBackground,subject:vo.focusOverride?vo.subject:ai?ai.subject:src.options.subject,aiAnchor:ai?.anchor,luma:src.options.luma,busy:src.options.busy,shade:src.options.shade,edge:src.options.edge};
       // Each format is isolated: an error removes only its own partial layers and leaves a Failed placeholder.
       const before=output.children.length,label=w+'×'+h,mine=new Set<string>();let v:FrameNode,issues:Issue[];
-      // Soft adaptation only where every text stays readable: not below the minimum font, and text the master already
-      // sets smaller than the minimum may lose a quarter at most. Smaller formats are re-laid by the schemes.
+      // Soft adaptation where the largest text (the headline) stays at the minimum font or above. Smaller secondary
+      // text is reported, as in the schemes — they do not make it larger either. Smaller formats are re-laid by the schemes.
       // The background must not outgrow the elements too far either: then the picture no longer matches the text.
-      const sc=soft&&src.soft?softFrame(src.soft,src.master,w,h,options.platforms):null,sf=sc&&src.soft&&src.soft.fonts.every(f=>f*sc.s>=Math.min(options.minFont,f*.75)-.01)&&sc.bg<=sc.s*SOFT_BG?src.soft:null;let kept=false;
+      const sc=soft&&src.soft?softFrame(src.soft,src.master,w,h,options.platforms):null,sf=sc&&src.soft&&(!src.soft.fonts.length||Math.max(...src.soft.fonts)*sc.s>=options.minFont-.01)&&sc.bg<=sc.s*SOFT_BG?src.soft:null;let kept=false;
       try{
         const geo={map:null as ((u:number,v:number)=>{x:number;y:number})|null};
         let made:FrameNode|null=exact&&src.template?proportionalVariant(src.template,output,w,h,src.master,mine,options.minFont):null;
@@ -1090,6 +1091,9 @@ async function sceneBytes(m:MasterNode,n:DesignNode,roles:Record<Role,string>|un
   if(!scene&&!visibleRect(n,m))return exportSmall(n,ai);
   const sources:Assets={};for(const k of ROLE_KEYS){const rid=roles?.[k];if(!rid)continue;const r=await figma.getNodeByIdAsync(rid);if(r&&isDesign(r)&&isInside(r,m)&&r.id!==m.id)sources[k]=r;}
   const stage=figma.createFrame();figma.currentPage.appendChild(stage);stage.name='Banner Adapt · анализ фона';stage.fills=[];stage.x=-100000;stage.y=-100000;
+  // A new frame is 100×100 and clips its content, and Figma clips an export by the node's ancestors: without this
+  // the render was the scene's top-left corner only, and the whole background analysis read an empty picture.
+  stage.clipsContent=false;
   try{return await exportSmall(scene?sceneBackground(m,stage,sources):clippedCopy(n,m,stage)||n,ai);}finally{stage.remove();}
 }
 async function visualPreview(id:string,mode='auto',roles?:Record<Role,string>){
@@ -1097,7 +1101,7 @@ async function visualPreview(id:string,mode='auto',roles?:Record<Role,string>){
   const bg=backgroundMode(n,m,mode),scene=bg&&coversMaster(n,m),preview=scene?m:n;
   // A partly hidden block is shown and analysed as the master shows it, the same crop the resizes get.
   const stage=!scene&&visibleRect(n,m)?figma.createFrame():null;let png:Uint8Array;
-  try{if(stage){figma.currentPage.appendChild(stage);stage.name='Banner Adapt · анализ фона';stage.fills=[];stage.x=-100000;stage.y=-100000;}
+  try{if(stage){figma.currentPage.appendChild(stage);stage.name='Banner Adapt · анализ фона';stage.fills=[];stage.clipsContent=false;stage.x=-100000;stage.y=-100000;}
     png=await ((stage&&clippedCopy(n,m,stage))||preview).exportAsync({format:'PNG',constraint:{type:'WIDTH',value:500}});}finally{if(stage)stage.remove();}
   send({type:'preview',kind:'visual',id,isBackground:bg,bytes:Array.from(png)});
   send({type:'scene',id,isBackground:bg,bytes:Array.from(await sceneBytes(m,n,roles,scene))});
