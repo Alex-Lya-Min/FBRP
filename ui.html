@@ -9,7 +9,16 @@
   color-scheme:dark;font-family:var(--text);font-size:12px;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
 *{box-sizing:border-box}body{margin:0;background:var(--bg)}
 #plugin-root{height:100vh;display:flex;flex-direction:column}
-main{display:block;flex:1;overflow-y:auto;padding:20px 16px 8px;min-height:0}
+header{display:block;flex-shrink:0;padding:20px 16px 0;background:var(--bg)}
+main{display:block;flex:1;overflow-y:auto;padding:0 16px 8px;min-height:0}
+/* Tabs: the four steps of the work. Same vocabulary as the rest of the panel: display font, hairlines, lime for the active item. */
+.tabs{display:flex;margin-top:14px;border-bottom:1px solid var(--line)}
+.tab{flex:1 1 auto;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:9px 2px 10px;background:transparent;color:var(--muted);font-family:var(--display);font-size:12px;font-weight:500;white-space:nowrap;position:relative}
+.tab .step{margin-right:6px;font-size:10px}
+.tab:hover:not(:disabled){background:transparent;border-color:transparent;color:var(--fg)}
+.tab.active,.tab.active:hover:not(:disabled){color:var(--fg);border-bottom-color:var(--lime)}
+.tab.active .step{color:var(--lime)}
+.tab.dot::after{content:'';position:absolute;top:7px;right:6px;width:5px;height:5px;background:var(--pink)}
 main::-webkit-scrollbar{width:6px}main::-webkit-scrollbar-thumb{background:var(--line)}main::-webkit-scrollbar-track{background:transparent}
 footer{display:block;flex-shrink:0;padding:12px 16px 14px;border-top:1px solid var(--line);background:var(--bg)}
 h1{font-family:var(--display);font-size:28px;line-height:1;margin:0;font-weight:500;letter-spacing:-.02em}
@@ -19,7 +28,7 @@ code{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg3)
 .tag{font-family:var(--display);font-size:11px;padding:4px 8px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
 .row{display:flex;align-items:center;gap:8px}.between{justify-content:space-between}
 .section{border-bottom:1px solid var(--line);padding:16px 0}
-section.section{border-top:1px solid var(--line);margin-top:16px}
+section.section{margin-top:0}
 details>summary{cursor:pointer;font-weight:500;font-size:13px;padding:2px 0;list-style:none;display:flex;align-items:center}
 details>summary::-webkit-details-marker{display:none}
 details>summary::after{content:'+';margin-left:auto;padding-left:12px;font-family:var(--display);font-size:16px;line-height:1;color:var(--muted)}
@@ -35,10 +44,10 @@ section.section>.row strong{font-weight:500;font-size:13px}
 .role-row{display:grid;grid-template-columns:1fr 34px;gap:6px;align-items:center}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .presets{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:10px 0}
-.preset{cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--muted);padding:7px 2px;font:inherit;font-family:var(--display);font-size:11px;font-variant-numeric:tabular-nums}
-.preset:hover:not(:disabled){color:var(--fg);border-color:var(--muted);background:transparent}
-.preset.active{background:rgba(206,244,109,.08);border-color:var(--lime);color:var(--lime)}
-.preset.active:hover:not(:disabled){background:rgba(206,244,109,.14);border-color:var(--lime);color:var(--lime)}
+.preset,.chip{cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--muted);padding:7px 2px;font:inherit;font-family:var(--display);font-size:11px;font-variant-numeric:tabular-nums}
+.preset:hover:not(:disabled),.chip:hover:not(:disabled){color:var(--fg);border-color:var(--muted);background:transparent}
+.preset.active,.chip.active{background:rgba(206,244,109,.08);border-color:var(--lime);color:var(--lime)}
+.preset.active:hover:not(:disabled),.chip.active:hover:not(:disabled){background:rgba(206,244,109,.14);border-color:var(--lime);color:var(--lime)}
 button:focus-visible,summary:focus-visible,a:focus-visible{outline:1px solid var(--fg);outline-offset:2px}
 .tiny{font-size:11px;line-height:1.5}
 .field-title{font-size:12px;font-weight:500;margin-top:16px}
@@ -107,11 +116,15 @@ input[type=checkbox]:disabled{opacity:.4;cursor:not-allowed}
 </style><script>
 try{window.localStorage.getItem('x')}catch(e){const m=new Map();Object.defineProperty(window,'localStorage',{value:{getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k),clear:()=>m.clear(),key:i=>Array.from(m.keys())[i]??null,get length(){return m.size}},configurable:true})}
 </script></head><body><div id="plugin-root">
-<main>
-<div class="row between"><h1>Banner Adapt</h1><span class="tag" id="tag">1.6 · Локально</span></div>
+<header>
+<div class="row between"><h1>Banner Adapt</h1><span class="tag" id="tag">1.7 · Локально</span></div>
 <p class="muted">Один мастер. Разные композиции.</p>
+<nav class="tabs" role="tablist" aria-label="Шаги работы"><button type="button" class="tab active" role="tab" id="tabbtn-master" data-tab="master" aria-selected="true" aria-controls="tab-master"><span class="step">01</span>Мастер</button><button type="button" class="tab" role="tab" id="tabbtn-formats" data-tab="formats" aria-selected="false" aria-controls="tab-formats"><span class="step">02</span>Форматы</button><button type="button" class="tab" role="tab" id="tabbtn-look" data-tab="look" aria-selected="false" aria-controls="tab-look"><span class="step">03</span>Композиция</button><button type="button" class="tab" role="tab" id="tabbtn-result" data-tab="result" aria-selected="false" aria-controls="tab-result"><span class="step">04</span>Результат</button></nav>
+</header>
+<main>
+<div class="panel" role="tabpanel" id="tab-master" aria-labelledby="tabbtn-master">
 <section class="section">
-<div class="row between"><strong><span class="step">01</span>Мастер-баннер</strong><button id="capture">Взять выделенный</button></div>
+<div class="row between"><strong>Мастер-баннер</strong><button id="capture">Взять выделенный</button></div>
 <div id="master" class="selection"><strong>Выдели баннер в Figma</strong><span class="muted">Один фрейм или группа со слоями.</span></div>
 <p id="save-status" class="tiny muted">Настройки сохраняются для каждого мастера.</p><div class="row"><button id="save-settings" disabled>Сохранить настройки</button><button id="reset-settings" disabled title="Вернуть роли, форматы и параметры к исходным">Сбросить настройки</button></div>
 <img id="master-preview" class="preview" hidden alt="Мастер-баннер">
@@ -120,10 +133,12 @@ try{window.localStorage.getItem('x')}catch(e){const m=new Map();Object.definePro
 <div id="alt-list"></div>
 <button id="add-alt" disabled>Добавить выделенный мастер</button>
 </section>
-<details class="section" id="roles-section" open><summary><span class="step">02</span>Проверь роли слоёв</summary><p class="tiny muted">При новых пропорциях используются назначенные слои. При сохранении пропорций копируется весь мастер, включая декор.</p><div id="roles"></div>
+<details class="section" id="roles-section" open><summary>Роли слоёв</summary><p class="tiny muted">При новых пропорциях используются назначенные слои. При сохранении пропорций копируется весь мастер, включая декор.</p><div id="roles"></div>
 <div class="switchrow"><label for="trimLogo">Убрать пустые поля и свечение логотипа</label><input type="checkbox" class="toggle" id="trimLogo" checked></div>
 </details>
-<details class="section" open><summary><span class="step">03</span>Форматы <span class="muted" id="count">25</span></summary>
+</div>
+<div class="panel" role="tabpanel" id="tab-formats" aria-labelledby="tabbtn-formats" hidden>
+<details class="section" open><summary>Форматы <span class="muted" id="count">25</span></summary>
 <div class="row"><button id="all">Все</button><button id="none">Снять</button><button id="portrait">Вертикальные</button></div>
 <p class="tiny muted">Отметьте площадки — их размеры добавятся в набор, а при экспорте файлы получат нужный формат, вес и имя. Требования площадок сверены 14.10.2026.</p>
 <div id="presets"></div>
@@ -143,20 +158,8 @@ try{window.localStorage.getItem('x')}catch(e){const m=new Map();Object.definePro
 <button id="trial" disabled>Проверить этот размер</button>
 <p class="tiny muted">Результат появится в отдельном пробном фрейме. Повторная проверка заменит его, включая ручные правки. Готовые наборы не меняются.</p>
 </details>
-<details class="section" id="batch-section" open><summary>Обновить созданный набор</summary>
-<div class="field"><label for="batch-select">Наборы этого мастера на текущей странице</label><select id="batch-select"><option value="">Нет связанных наборов — создайте новый</option></select></div>
-<button id="refresh-batches">Обновить список</button>
-<p class="tiny muted">Выбор набора загрузит его настройки. Обновление заменит содержимое по текущему мастеру и параметрам. Ручные правки останутся в отдельной «Предыдущей версии» рядом. Положение набора сохранится.</p>
-<div class="switchrow"><label for="confirm-update">Заменить содержимое выбранного набора</label><input type="checkbox" id="confirm-update" class="toggle"></div>
-<button id="update" disabled>Обновить выбранный набор</button>
-</details>
-<details class="section" id="export-section" open><summary><span class="step">04</span>Экспорт для площадок</summary>
-<div class="field"><label for="campaign">Название кампании для имён файлов</label><input id="campaign" placeholder="socforum26" maxlength="40"></div>
-<div class="field"><label for="exportFormat">Формат файлов</label><select id="exportFormat"><option value="platform">По требованиям площадки</option><option value="png">Всегда PNG</option><option value="jpg">Всегда JPG</option></select></div>
-<p class="tiny muted">Выгружается набор, выбранный в «Обновить созданный набор», иначе последний созданный или выделенный на холсте. Для каждой отмеченной площадки — своя папка в ZIP, имя «кампания_площадка_ширинаxвысота». Качество JPG подбирается так, чтобы уложиться в лимит веса.</p>
-<button id="export" disabled>Экспортировать набор в ZIP</button>
-<div id="export-report"></div>
-</details>
+</div>
+<div class="panel" role="tabpanel" id="tab-look" aria-labelledby="tabbtn-look" hidden>
 <details class="section" id="crop-section" open><summary>Изображение и композиция</summary>
 <div class="field"><label for="imageFit">Масштаб картинки</label><select id="imageFit"><option value="auto">Авто — плагин решает сам</option><option value="fill">Заполнять баннер — по большей стороне, края обрезаются</option><option value="width">По ширине баннера — пропорционально</option><option value="height">По высоте баннера — пропорционально</option><option value="extend">Вписывать объект — свободное место заливается цветом краёв</option></select></div>
 <p id="edge-note" class="tiny muted">«Заполнять баннер»: картинка всегда растягивается на весь формат с сохранением пропорций, без заливки и мягких краёв, лишнее обрезается. «По ширине» / «По высоте»: картинка пропорционально масштабируется точно по ширине или высоте баннера; что не помещается — обрезается, пустое место заливается. «Вписывать объект»: главный объект помещается целиком, остальное заливается цветом краёв картинки с мягким переходом. «Авто»: заливка только если края картинки одного ровного цвета (объект на однотонном фоне).</p>
@@ -168,11 +171,18 @@ try{window.localStorage.getItem('x')}catch(e){const m=new Map();Object.definePro
 <div class="two"><div class="field"><label>Фокус X, %</label><input type="number" id="focusX" value="50" min="0" max="100"></div><div class="field"><label>Фокус Y, %</label><input type="number" id="focusY" value="50" min="0" max="100"></div></div>
 <div class="two"><div class="field"><label>Масштаб, %</label><input type="number" id="zoom" value="100" min="100" max="500"></div><div class="field"><label>Изображение</label><select id="fit"><option value="cover">Заполнить область</option><option value="contain">Показать целиком</option></select></div></div>
 <div class="field"><label for="placement">Расстановка текста</label><select id="placement"><option value="auto">Авто — текст не закрывает объект</option><option value="master">Как в мастере — текст там же, где в мастере</option><option value="fixed">Всегда по основной схеме</option></select></div>
-<p class="tiny muted">«Авто»: плагин примеряет несколько схем (текст сверху, снизу, слева, справа) и выбирает ту, где текст не закрывает объект, лежит на спокойном фоне без деталей и хорошо читается. «Как в мастере»: текст всегда в той же части баннера, что и в мастере. Для отдельного формата положение можно задать в «Настроить и проверить один размер». Выбранная схема видна в имени баннера.</p>
+<p class="tiny muted">«Авто»: плагин примеряет несколько схем (текст сверху, снизу, слева, справа) и выбирает ту, где текст не закрывает объект, лежит на спокойном фоне без деталей и хорошо читается. «Как в мастере»: текст всегда в той же части баннера, что и в мастере. Для отдельного формата положение можно задать на вкладке «Форматы» → «Настроить и проверить один размер». Выбранная схема видна в имени баннера.</p>
 <div class="field"><label>В горизонтальных форматах</label><select id="visualSide"><option value="auto">Авто — по свободному месту</option><option value="right">Изображение справа</option><option value="left">Изображение слева</option></select></div>
 
 <div class="switchrow"><label for="fade">Мягкие края изображения</label><input type="checkbox" class="toggle" id="fade" checked></div>
 <p class="tiny muted">Для отдельного блока: масштаб 100% + «Показать целиком» сохраняет всё изображение. Фон всегда заполняет баннер с обрезкой краёв.</p></details>
+<details class="section"><summary>Цвет и текст</summary><div class="field"><label for="background">Фон ресайзов</label><input type="color" id="background" value="#081226"></div>
+<div class="field"><label for="fillColor">Чем заливать место, не закрытое картинкой</label><select id="fillColor"><option value="edge">Цветом краёв картинки (авто)</option><option value="custom">Цветом «Фон ресайзов»</option></select></div><p class="tiny muted">Заливка видна, только если картинка не закрывает баннер целиком: режимы «Вписывать объект», «По ширине» и «По высоте», а также «Авто» для картинки на однотонном фоне. При выборе цвета этот пункт переключается на «Фон ресайзов».</p>
+<div class="field"><label for="minFont">Минимальный размер текста, px</label><input type="number" id="minFont" value="12" min="6" max="48"></div>
+<div class="switchrow"><label for="enforceMinFont">Не уменьшать заголовок ниже минимума</label><input type="checkbox" class="toggle" id="enforceMinFont" checked></div><p class="tiny muted">В адаптивной раскладке заголовок сохранит минимум. Если места мало, баннер получит отметку ⚠. Для остальных текстов и точной копии мастера это порог предупреждения.</p>
+<div class="switchrow"><label for="scrim">Подложка под текст, если он плохо читается на фоне</label><input type="checkbox" class="toggle" id="scrim" checked></div><p class="tiny muted">Плагин проверяет контраст текста с фоном в каждом формате. Если светлый текст попал на светлый участок, под текстом появляется мягкий градиент в цвет теней картинки. Без подложки такие места попадут в отчёт.</p>
+<div class="switchrow"><label for="outlineMissing">Недоступные шрифты переводить в кривые</label><input type="checkbox" class="toggle" id="outlineMissing" checked></div>
+<p class="tiny muted">Доступные шрифты и текст сохраняются. Для текста в кривых перенос строк недоступен. Исходный мастер не меняется.</p></details>
 <details class="section ai-off" id="ai-section"><summary>AI-кадрирование картинки · отдельная настройка</summary>
 <p class="tiny muted">AI отвечает только за картинку: находит главный объект и его самую узнаваемую часть и решает, что сохранить в полосах, горизонталях, квадратах и вертикалях. Тексты, раскладку и экспорт по-прежнему делает плагин. Один запрос на мастер — около 0,5–1 тыс. токенов. Ответ сохраняется в мастере: повторные запуски и коллеги по файлу токены не тратят.</p>
 <div class="switchrow"><label for="ai-enabled">Включить AI-кадрирование</label><input type="checkbox" class="toggle" id="ai-enabled"></div>
@@ -190,20 +200,37 @@ try{window.localStorage.getItem('x')}catch(e){const m=new Map();Object.definePro
 <p class="tiny muted">Ключ хранится только в Figma на этом компьютере и в файл не попадает. В модель уходит одна картинка мастера без текстов и логотипа, 512 px по длинной стороне. Если рамка объекта задана вручную, AI её не меняет.</p>
 <div class="row between"><span id="ai-note" class="tiny muted">AI-кадрирование выключено.</span><button id="ai-run" type="button">Разобрать заново</button></div>
 </div></details>
-<details class="section"><summary>Цвет и текст</summary><div class="field"><label for="background">Фон ресайзов</label><input type="color" id="background" value="#081226"></div>
-<div class="field"><label for="fillColor">Чем заливать место, не закрытое картинкой</label><select id="fillColor"><option value="edge">Цветом краёв картинки (авто)</option><option value="custom">Цветом «Фон ресайзов»</option></select></div><p class="tiny muted">Заливка видна, только если картинка не закрывает баннер целиком: режимы «Вписывать объект», «По ширине» и «По высоте», а также «Авто» для картинки на однотонном фоне. При выборе цвета этот пункт переключается на «Фон ресайзов».</p>
-<div class="field"><label for="minFont">Минимальный размер текста, px</label><input type="number" id="minFont" value="12" min="6" max="48"></div>
-<div class="switchrow"><label for="enforceMinFont">Не уменьшать заголовок ниже минимума</label><input type="checkbox" class="toggle" id="enforceMinFont" checked></div><p class="tiny muted">В адаптивной раскладке заголовок сохранит минимум. Если места мало, баннер получит отметку ⚠. Для остальных текстов и точной копии мастера это порог предупреждения.</p>
-<div class="switchrow"><label for="scrim">Подложка под текст, если он плохо читается на фоне</label><input type="checkbox" class="toggle" id="scrim" checked></div><p class="tiny muted">Плагин проверяет контраст текста с фоном в каждом формате. Если светлый текст попал на светлый участок, под текстом появляется мягкий градиент в цвет теней картинки. Без подложки такие места попадут в отчёт.</p>
-<div class="switchrow"><label for="outlineMissing">Недоступные шрифты переводить в кривые</label><input type="checkbox" class="toggle" id="outlineMissing" checked></div>
-<p class="tiny muted">Доступные шрифты и текст сохраняются. Для текста в кривых перенос строк недоступен. Исходный мастер не меняется.</p></details>
 <details class="section"><summary>Старый режим: AI-план по форматам через чат</summary>
 <p class="info">Работает с твоим чатом в ChatGPT, Claude или Gemini. Скопируй задание, приложи мастер-баннер и верни JSON-ответ сюда. Для кадрирования картинки удобнее раздел «AI-кадрирование картинки» — там же есть режим через чат без API.</p>
 <button id="prompt">Подготовить и скопировать задание</button>
 <textarea id="prompt-text" rows="5" readonly hidden aria-label="Задание для нейросети"></textarea>
 <div class="field"><label>JSON-ответ нейросети</label><textarea rows="3" id="aiPlan" placeholder='{"version":1,"variants":[]}'></textarea></div>
 <p class="tiny muted">AI может предложить фокус, масштаб изображения, его сторону и масштаб заголовка для каждого размера. Решения проверяются перед созданием.</p></details>
+</div>
+<div class="panel" role="tabpanel" id="tab-result" aria-labelledby="tabbtn-result" hidden>
 <details id="report" class="section" hidden><summary>Результаты проверки</summary><p id="result-summary" class="tiny"></p><ul id="results" class="results"></ul><p id="general-title" class="tiny muted" hidden>Общие замечания</p><ul id="warnings" class="warnings"></ul><p class="tiny muted">«Пройдено» значит только, что автоматические проверки не нашли нарушений. Композицию всё равно стоит посмотреть.</p></details>
+<section class="section" id="set-section">
+<div class="row between"><strong>Набор</strong><button id="refresh-batches">Обновить список</button></div>
+<div class="field"><label for="batch-select">Наборы этого мастера на текущей странице</label><select id="batch-select"><option value="">Нет связанных наборов — создайте новый</option></select></div>
+<p class="tiny muted">Выбранный набор используется для экспорта и обновления. Выбор набора загрузит его настройки.</p>
+</section>
+<details class="section" id="export-section" open><summary>Экспорт для площадок</summary>
+<div class="field"><label for="campaign">Название кампании для имён файлов</label><input id="campaign" placeholder="socforum26" maxlength="40"></div>
+<div class="field"><label for="exportFormat">Формат файлов</label><select id="exportFormat"><option value="platform">По требованиям площадки</option><option value="png">Всегда PNG</option><option value="jpg">Всегда JPG</option></select></div>
+<div class="field-title">Что выгрузить <span class="muted" id="xp-count"></span></div>
+<div class="row" style="margin-top:8px"><button id="xp-all" type="button" disabled>Все</button><button id="xp-none" type="button" disabled>Снять</button><button id="xp-canvas" type="button" disabled title="Отметить баннеры, выделенные на холсте в Figma">Выделенные на холсте</button></div>
+<div id="xp-sizes" class="presets"></div>
+<p id="xp-info" class="tiny muted">Список размеров появится, когда набор создан или выбран выше.</p>
+<p class="tiny muted">Отметьте один или несколько размеров, чтобы выгрузить только их — с тем же подбором формата и веса, что и для всего набора. Один файл скачивается сразу, без ZIP. Несколько файлов — в ZIP: для каждой отмеченной площадки своя папка, имя «кампания_площадка_ширинаxвысота». Качество JPG подбирается так, чтобы уложиться в лимит веса.</p>
+<button id="export" disabled>Экспортировать набор в ZIP</button>
+<div id="export-report"></div>
+</details>
+<details class="section" id="batch-section" open><summary>Обновить созданный набор</summary>
+<p class="tiny muted">Обновление заменит содержимое набора, выбранного выше, по текущему мастеру и параметрам. Ручные правки останутся в отдельной «Предыдущей версии» рядом. Положение набора сохранится.</p>
+<div class="switchrow"><label for="confirm-update">Заменить содержимое выбранного набора</label><input type="checkbox" id="confirm-update" class="toggle"></div>
+<button id="update" disabled>Обновить выбранный набор</button>
+</details>
+</div>
 </main>
 <footer><p class="author"><span>Banner Adapt<span class="sep">※</span>Алексей Лямин</span><a href="https://alexlyamin.framer.website/ru-home" id="author-link">Портфолио <span aria-hidden="true">↗</span></a></p><p id="status" class="status" role="status" aria-live="polite">Выдели мастер-баннер, чтобы начать.</p><div class="actions"><button id="run" type="submit" disabled>Создать ресайзы</button><button id="cancel">Отменить</button></div></footer>
 </div><script>
@@ -211,14 +238,14 @@ const $=id=>document.getElementById(id),post=message=>parent.postMessage({plugin
 const keys=['logo','headline','date','body','cta','visual'];
 const labels={logo:'Логотип',headline:'Заголовок',date:'Дата / надпись',body:'Дополнительный текст',cta:'Кнопка целиком',visual:'Изображение / иллюстрация'};
 let aiCfg={enabled:false,provider:'anthropic',model:'',endpoint:'',key:''},sceneHash='',sceneAi=null,savedAi=null,aiWaiters=new Map(),aiCfgTimer=null,aiError='';
-let master=null,presets=[],selected=new Set(),running=false,visualId='',urls={},saveTimer=null,restoring=false,variantOverrides={},editingKey='',sizeSignature='',subject=null,subjectSource='auto',sceneInfo=null,dragStart=null,alternates=[],platforms=[],activePlatforms=new Set(['own']),lastOutputId='',exportJob=null;
+let master=null,presets=[],selected=new Set(),running=false,visualId='',urls={},saveTimer=null,restoring=false,variantOverrides={},editingKey='',sizeSignature='',subject=null,subjectSource='auto',sceneInfo=null,dragStart=null,alternates=[],platforms=[],activePlatforms=new Set(['own']),lastOutputId='',exportJob=null,exportSet={id:'',name:'',items:[]},exportPick=new Set();
 const variantFields=['focusX','focusY','zoom','headlineScale','visualSide','textPos','imageFit'];
 const val=id=>$(id).value??$(id).getAttribute('value')??'';
 const bool=id=>$(id).checked;
 function disable(el,yes){el.disabled=yes;el.toggleAttribute('disabled',yes)}
 function setStatus(text,kind=''){ $('status').textContent=text;$('status').className='status '+kind; }
 function getSizes(){let sizes=presets.filter(s=>selected.has(s.join('x')));const raw=String(val('custom')).trim();if(raw){for(const line of raw.split(/[\n;,]+/)){if(!line.trim())continue;const match=line.trim().match(/^(\d+)\s*[xх×*]\s*(\d+)$/i);if(!match)throw Error('Размер «'+line+'»: используйте запись 800x1200.');sizes.push([+match[1],+match[2]])}}const unique=[...new Map(sizes.map(s=>[s.join('x'),s])).values()];if(unique.length>60)throw Error('Максимум 60 форматов за запуск.');if(unique.some(s=>s.some(v=>v<32||v>6000)))throw Error('Каждая сторона: от 32 до 6000 px.');return unique;}
-function refresh(){let sizeCount=0,valid=true;try{sizeCount=getSizes().length}catch(e){valid=false;setStatus(e.message,'error')}$('count').textContent=sizeCount;$('run').textContent='Создать '+sizeCount+' ресайзов';disable($('run'),!master||!valid||!sizeCount||running);disable($('capture'),running);disable($('save-settings'),!master||!valid||!sizeCount||running);disable($('reset-settings'),!master||running);disable($('update'),!master||!valid||!sizeCount||running||!val('batch-select')||!bool('confirm-update'));disable($('refresh-batches'),!master||running);disable($('add-alt'),!master||running||alternates.length>=3);disable($('export'),!master||running||!!exportJob);for(const el of document.querySelectorAll('.pack-toggle'))el.disabled=running;renderAlternates();for(const el of document.querySelectorAll('main input, main select, main textarea'))el.disabled=running;for(const el of document.querySelectorAll('.preset')){el.classList.toggle('active',selected.has(el.dataset.size));el.setAttribute('aria-pressed',selected.has(el.dataset.size)?'true':'false');el.disabled=running;}renderVariantPicker();disable($('trial'),!master||!valid||!sizeCount||running);disable($('variant-enabled'),running||!editingKey);for(const k of variantFields)disable($('variant-'+k),running||!editingKey||!bool('variant-enabled'));aiStatus();}
+function refresh(){let sizeCount=0,valid=true;try{sizeCount=getSizes().length}catch(e){valid=false;setStatus(e.message,'error')}$('count').textContent=sizeCount;$('run').textContent='Создать '+sizeCount+' ресайзов';disable($('run'),!master||!valid||!sizeCount||running);disable($('capture'),running);disable($('save-settings'),!master||!valid||!sizeCount||running);disable($('reset-settings'),!master||running);disable($('update'),!master||!valid||!sizeCount||running||!val('batch-select')||!bool('confirm-update'));disable($('refresh-batches'),!master||running);disable($('add-alt'),!master||running||alternates.length>=3);updateExportUi();for(const el of document.querySelectorAll('.pack-toggle'))el.disabled=running;renderAlternates();for(const el of document.querySelectorAll('main input, main select, main textarea'))el.disabled=running;for(const el of document.querySelectorAll('.preset')){el.classList.toggle('active',selected.has(el.dataset.size));el.setAttribute('aria-pressed',selected.has(el.dataset.size)?'true':'false');el.disabled=running;}renderVariantPicker();disable($('trial'),!master||!valid||!sizeCount||running);disable($('variant-enabled'),running||!editingKey);for(const k of variantFields)disable($('variant-'+k),running||!editingKey||!bool('variant-enabled'));aiStatus();}
 function aspectLabel(w,h){const r=w/h;return r>=1.55?'горизонтальный':r>.88?'квадратный':'вертикальный';}
 // Which master each selected format will be built from (closest proportions; ties stay with the main master).
 function sourceCounts(){let sizes=[];try{sizes=getSizes()}catch(_e){}const all=[{id:master?.id,width:master?.width,height:master?.height},...alternates],count={};
@@ -360,7 +387,7 @@ $('reset-settings').addEventListener('click',()=>{if(!master||running)return;con
 $('add-alt').addEventListener('click',()=>post({type:'add-alternate'}));
 $('author-link').addEventListener('click',e=>{e.preventDefault();post({type:'open-link'});});
 $('refresh-batches').addEventListener('click',()=>post({type:'list-batches'}));
-$('batch-select').addEventListener('change',()=>{clearTimeout(saveTimer);$('confirm-update').checked=false;refresh();if(val('batch-select'))post({type:'load-batch',batchId:val('batch-select')});});
+$('batch-select').addEventListener('change',()=>{clearTimeout(saveTimer);$('confirm-update').checked=false;refresh();if(val('batch-select'))post({type:'load-batch',batchId:val('batch-select')});else requestExportList();});
 $('confirm-update').addEventListener('change',refresh);
 $('variant-size').addEventListener('change',()=>{try{stashVariant();editingKey=val('variant-size');renderVariantFields();refresh();}catch(e){$('variant-size').value=editingKey;setStatus(e.message,'error');}});
 $('variant-enabled').addEventListener('change',()=>{if(!editingKey)return;if(bool('variant-enabled')){variantOverrides[editingKey]={focusX:Number(val('focusX')),focusY:Number(val('focusY')),zoom:Number(val('zoom')),headlineScale:1,visualSide:val('visualSide'),textPos:'auto',imageFit:'auto',preserveMaster:false};}else delete variantOverrides[editingKey];renderVariantFields();refresh();queueSave();});
@@ -416,7 +443,7 @@ function aiModel(){return aiCfg.model||aiProvider().model;}
 function sameBox(a,b){return !!a&&!!b&&['x','y','w','h'].every(k=>Math.abs(a[k]-b[k])<.002);}
 function hashBytes(b){b=b instanceof Uint8Array?b:new Uint8Array(b);let h=0x811c9dc5;for(let i=0;i<b.length;i++){h^=b[i];h=Math.imul(h,0x01000193)>>>0;}return 'f'+h.toString(16)+'-'+b.length;}
 function base64(bytes){let s='';for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode.apply(null,Array.from(bytes.subarray(i,i+0x8000)));return btoa(s);}
-function renderAiConfig(){const pr=aiCfg.provider;$('ai-enabled').checked=aiOn();$('ai-provider').value=pr;$('ai-model').value=aiCfg.model;$('ai-model').placeholder=pr==='bridge'?'auto — haiku или модель Codex':aiProvider().model||'название модели';$('ai-endpoint').value=aiCfg.endpoint;$('ai-endpoint').placeholder=pr==='bridge'?AI_PROVIDERS.bridge.url:'http://localhost:11434/v1/chat/completions';$('ai-key').value=aiCfg.key;$('ai-endpoint-row').hidden=pr!=='custom'&&pr!=='bridge';$('ai-mk-row').hidden=pr==='chat';$('ai-chat').hidden=pr!=='chat';$('ai-bridge-help').hidden=pr!=='bridge';$('ai-key-label').textContent=pr==='bridge'?'Код моста':'Ключ API';$('ai-key').placeholder=pr==='bridge'?'ba-…':'вставьте ключ';$('ai-run').hidden=pr==='chat';$('ai-section').classList.toggle('ai-off',!aiOn());$('tag').textContent='1.6 · '+(aiOn()?'AI-кадрирование':'Локально');aiStatus();}
+function renderAiConfig(){const pr=aiCfg.provider;$('ai-enabled').checked=aiOn();$('ai-provider').value=pr;$('ai-model').value=aiCfg.model;$('ai-model').placeholder=pr==='bridge'?'auto — haiku или модель Codex':aiProvider().model||'название модели';$('ai-endpoint').value=aiCfg.endpoint;$('ai-endpoint').placeholder=pr==='bridge'?AI_PROVIDERS.bridge.url:'http://localhost:11434/v1/chat/completions';$('ai-key').value=aiCfg.key;$('ai-endpoint-row').hidden=pr!=='custom'&&pr!=='bridge';$('ai-mk-row').hidden=pr==='chat';$('ai-chat').hidden=pr!=='chat';$('ai-bridge-help').hidden=pr!=='bridge';$('ai-key-label').textContent=pr==='bridge'?'Код моста':'Ключ API';$('ai-key').placeholder=pr==='bridge'?'ba-…':'вставьте ключ';$('ai-run').hidden=pr==='chat';$('ai-section').classList.toggle('ai-off',!aiOn());$('tag').textContent='1.7 · '+(aiOn()?'AI-кадрирование':'Локально');aiStatus();}
 function aiStatus(){const n=$('ai-note');if(!n)return;n.classList.toggle('error',!!aiError&&aiOn());
   if(!aiOn()){n.textContent='AI-кадрирование выключено — работает локальный анализ.';}
   else if(aiError)n.textContent='AI: '+aiError+' Использован локальный анализ.';
@@ -488,11 +515,15 @@ window.addEventListener('message',e=>{const m=e.data.pluginMessage;if(!m)return;
  if(m.type==='scene'&&m.id===visualId){const hash=hashBytes(m.bytes);sceneHash=hash;sceneAi=savedAi&&savedAi.hash===hash?savedAi:sceneAi&&sceneAi.hash===hash?sceneAi:null;if(aiOn()&&sceneAi&&subjectSource!=='user')applyAi();aiStatus();analyzeScene(m.bytes).then(info=>{if(m.id!==visualId)return;sceneInfo=info;if(aiOn()&&sceneAi&&subjectSource==='ai')subjectLabel();else if(info&&(subjectSource==='auto'||subjectSource==='ai'))setSubject(info.subject,'auto');else if(subjectSource==='ai')setSubject(null,'auto');else subjectLabel();aiStatus();});}
  if(m.type==='ai-config'){if(m.config)aiCfg={...aiCfg,...m.config};renderAiConfig();}
  if(m.type==='ai-image'){const w=aiWaiters.get(m.key);if(w){aiWaiters.delete(m.key);w(m.bytes?new Uint8Array(m.bytes):null);}}
- if(m.type==='batches')renderBatches(m.items,m.selectedId);
+ if(m.type==='batches'){renderBatches(m.items,m.selectedId);requestExportList();}
+ if(m.type==='export-items'){const keep=m.batchId&&m.batchId===exportSet.id?(m.items||[]).filter(i=>exportPick.has(i.id)).map(i=>i.id):[];exportSet={id:m.batchId||'',name:m.name||'',items:m.items||[]};
+  exportPick=new Set(m.picked||(keep.length?keep:exportSet.items.map(i=>i.id)));renderExportPick();if(m.picked)setStatus('Отмечено для выгрузки: '+exportPick.size+' из '+exportSet.items.length+'.');}
  if(m.type==='export-start'){exportJob={name:m.name,total:m.total,files:[],names:new Set(),chain:Promise.resolve()};$('export-report').replaceChildren();setStatus('Выгрузка: 0 из '+m.total+'…');refresh();}
  if(m.type==='export-file'&&exportJob){const job=exportJob,f={w:m.w,h:m.h,bytes:new Uint8Array(m.bytes)};job.chain=job.chain.then(()=>exportOne(f,job)).then(()=>setStatus('Выгрузка: '+(m.index+1)+' из '+job.total+'…'));}
  if(m.type==='export-end'&&exportJob){const job=exportJob;job.chain=job.chain.then(()=>{if(!job.files.length){setStatus('Файлы не выгружены.','error');return;}
    const camp=String(val('campaign')).trim().replace(/\s+/g,'-').replace(/[^A-Za-z0-9А-Яа-яЁё_-]/g,'')||'banners';
+   if(job.files.length===1){const f=job.files[0],name=f.name.split('/').pop();download(name,f.data,f.q===null?'image/png':'image/jpeg');renderReport(job);
+    setStatus((m.cancelled?'Выгрузка остановлена. ':'')+'Готово: '+name+' · '+(f.data.length/1024).toFixed(0)+' КБ'+(f.over?'. Больше лимита — упростите картинку или уменьшите детали.':'.'),f.over?'error':'success');return;}
    const zip=makeZip([...job.files.map(f=>({name:f.name,data:f.data})),{name:'specs.txt',data:utf8(specsText(job))}]);window.__lastZip=zip;download(camp+'.zip',zip);renderReport(job);
    const over=job.files.filter(f=>f.over).length;setStatus((m.cancelled?'Выгрузка остановлена. ':'')+'Готово: '+job.files.length+' файлов в '+camp+'.zip'+(over?'. Больше лимита: '+over+' — упростите картинку или уменьшите детали.':'.'),over?'error':'success');})
    .catch(e=>{setStatus('Не удалось подготовить файлы: '+e.message,'error');})
@@ -505,9 +536,10 @@ window.addEventListener('message',e=>{const m=e.data.pluginMessage;if(!m)return;
  if(m.type==='progress')setStatus('Создано '+m.done+' из '+m.total+'…');
  if(m.type==='done'){if(m.outputId&&!m.trial)lastOutputId=m.outputId;const res=m.results||[],cnt={passed:0,warning:0,failed:0};for(const r of res)cnt[r.status]++;
   const general=m.general||m.warnings||[];const problems=cnt.warning+cnt.failed;
-  setStatus((m.cancelled?'Остановлено. ':'Готово. ')+(m.trial?'Пробный ресайз готов.':(m.updated?'Обновлено ':'Создано ')+m.count+' форматов.')+(m.backupId?' Прежняя версия сохранена рядом.':'')+(res.length?' Пройдено '+cnt.passed+', проверить '+cnt.warning+', не прошли '+cnt.failed+'.':'')+(problems||general.length?' Подробности — в «Результатах проверки».':' Проверьте композиции на холсте.'),cnt.failed?'error':'success');
+  setStatus((m.cancelled?'Остановлено. ':'Готово. ')+(m.trial?'Пробный ресайз готов.':(m.updated?'Обновлено ':'Создано ')+m.count+' форматов.')+(m.backupId?' Прежняя версия сохранена рядом.':'')+(res.length?' Пройдено '+cnt.passed+', проверить '+cnt.warning+', не прошли '+cnt.failed+'.':'')+(problems||general.length?' Подробности — на вкладке «Результат».':' Проверьте композиции на холсте.'),cnt.failed?'error':'success');
   renderResults(res,cnt);$('warnings').replaceChildren();general.forEach(w=>{const li=document.createElement('li');li.textContent=w;$('warnings').append(li)});$('general-title').hidden=!general.length||!res.length;
-  $('report').hidden=!res.length&&!general.length;$('report').open=!!(problems||general.length);}
+  $('report').hidden=!res.length&&!general.length;$('report').open=!!(problems||general.length);
+  if(!m.trial)showTab('result');else if(problems||general.length)$('tabbtn-result').classList.add('dot');}
 });
 // Results: one line per banner that needs attention, with a button that selects it on the canvas.
 const STATUS_TEXT={passed:'✓ Пройдено',warning:'⚠ Проверить',failed:'✕ Не прошёл'};
@@ -555,6 +587,24 @@ function renderReport(job){const root=$('export-report');root.replaceChildren();
 function specsText(job){const used=[...new Set(job.files.map(f=>f.platform))];return ['Banner Adapt · Алексей Лямин · https://alexlyamin.framer.website/ru-home','Набор: '+job.name,'Выгружено: '+new Date().toLocaleString('ru-RU'),'',
   ...platforms.filter(p=>used.includes(p.name)).map(p=>p.name+'\n  '+p.note),'',...job.files.map(f=>f.name+' · '+(f.data.length/1024).toFixed(1)+' КБ'+(f.limit?' / лимит '+kb(f.limit):'')+(f.over?' · БОЛЬШЕ ЛИМИТА':''))].join('\n');}
 function download(name,bytes,type='application/zip'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bytes],{type}));a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000);}
-$('export').addEventListener('click',()=>{if(running||!master)return;post({type:'export',batchId:val('batch-select')||lastOutputId});setStatus('Готовим файлы…');});
+$('export').addEventListener('click',()=>{if(running||!master)return;const n=exportSet.items.length;if(n&&!exportPick.size)return;
+  post({type:'export',batchId:exportSet.id||val('batch-select')||lastOutputId,ids:n&&exportPick.size<n?[...exportPick]:undefined});setStatus('Готовим файлы…');});
+// ---- Export of chosen sizes: the banners of the current set as chips; all are marked by default ----
+function requestExportList(fromSelection){if(!master)return;post({type:'export-list',batchId:fromSelection?'':(val('batch-select')||lastOutputId),fromSelection:!!fromSelection});}
+function renderExportPick(){const root=$('xp-sizes');root.replaceChildren();
+  for(const it of exportSet.items){const b=document.createElement('button');b.type='button';b.className='chip';b.dataset.id=it.id;b.textContent=it.w+' × '+it.h;b.title=it.name;
+    b.addEventListener('click',()=>{exportPick.has(it.id)?exportPick.delete(it.id):exportPick.add(it.id);updateExportUi();});root.append(b);}
+  updateExportUi();}
+function updateExportUi(){const n=exportSet.items.length,k=exportPick.size;
+  for(const el of document.querySelectorAll('#xp-sizes .chip')){const on=exportPick.has(el.dataset.id);el.classList.toggle('active',on);el.setAttribute('aria-pressed',on?'true':'false');el.disabled=running;}
+  $('xp-count').textContent=n?k+' из '+n:'';$('xp-info').textContent=n?'Набор: '+exportSet.name:'Список размеров появится, когда набор создан или выбран выше.';
+  $('export').textContent=!n?'Экспортировать набор в ZIP':k===1?'Экспортировать 1 размер':k===n?'Экспортировать набор в ZIP':'Экспортировать '+k+' из '+n;
+  disable($('export'),!master||running||!!exportJob||(n>0&&!k));disable($('xp-all'),running||!n);disable($('xp-none'),running||!n);disable($('xp-canvas'),!master||running);}
+$('xp-all').addEventListener('click',()=>{exportPick=new Set(exportSet.items.map(i=>i.id));updateExportUi();});
+$('xp-none').addEventListener('click',()=>{exportPick=new Set();updateExportUi();});
+$('xp-canvas').addEventListener('click',()=>requestExportList(true));
+// ---- Tabs: one step of the work per tab ----
+function showTab(name){for(const b of document.querySelectorAll('.tab')){const on=b.dataset.tab===name;b.classList.toggle('active',on);b.setAttribute('aria-selected',on?'true':'false');if(on)b.classList.remove('dot');$('tab-'+b.dataset.tab).hidden=!on;}document.querySelector('main').scrollTop=0;}
+for(const b of document.querySelectorAll('.tab'))b.addEventListener('click',()=>showTab(b.dataset.tab));
 post({type:'ready'});
 </script></body></html>

@@ -1,4 +1,4 @@
-// Banner Adapt 1.6 — local layout engine. Optional AI framing: one small request per master with the user's own key,
+// Banner Adapt 1.7 — local layout engine. Optional AI framing: one small request per master with the user's own key,
 // the answer is the scene geometry only; every format is still computed locally.
 // Author: Алексей Лямин (Alex Lyamin) · https://alexlyamin.framer.website/ru-home
 type Role = 'logo'|'headline'|'date'|'body'|'cta'|'visual';
@@ -22,7 +22,7 @@ type AiScene={hash:string;model:string;label:string;subject:Rect01;core:Rect01|n
 // Extra masters for other proportions, with the panel's analysis of their background.
 type AltMaster={id:string;subject?:Rect01|null;luma?:number[]|null;busy?:number[]|null;shade?:string;edge?:string|null;aiScene?:AiScene|null};
 type Overrides = Partial<Pick<Options,'focusX'|'focusY'|'zoom'|'headlineScale'|'visualSide'|'preserveMaster'|'textPos'|'imageFit'>>;
-type UiMessage = {type:string;altId?:string;config?:unknown;masterId?:string;batchId?:string;confirmed?:boolean;trialSize?:Size;visualMode?:string;id?:string;roles:Record<Role,string>;sizes:Size[];options:Options};
+type UiMessage = {type:string;altId?:string;config?:unknown;masterId?:string;batchId?:string;ids?:string[];fromSelection?:boolean;confirmed?:boolean;trialSize?:Size;visualMode?:string;id?:string;roles:Record<Role,string>;sizes:Size[];options:Options};
 function isDesign(n:BaseNode):n is DesignNode{return ['FRAME','GROUP','COMPONENT','INSTANCE','TEXT','RECTANGLE','ELLIPSE','VECTOR','BOOLEAN_OPERATION','POLYGON','STAR','LINE'].includes(n.type);}
 function isMaster(n:BaseNode):n is MasterNode{return ['FRAME','GROUP','COMPONENT','INSTANCE'].includes(n.type);}
 function messageText(error:unknown):string{const m=(error as {message?:unknown}|null)?.message;return typeof m==='string'?m:String(error);}
@@ -818,9 +818,10 @@ async function aiConfig(){try{return validAiConfig(await figma.clientStorage.get
 async function exportTarget(id?:string):Promise<FrameNode>{
   if(id){const n=await figma.getNodeByIdAsync(id);if(n&&n.type==='FRAME'&&(readBatch(n)||readBatch(n,'trial')))return n;}
   const sel=figma.currentPage.selection[0],b=sel&&batchAncestor(sel);if(b)return b;
-  throw new Error('Выберите созданный набор в списке «Обновить созданный набор» или выделите его на холсте.');
+  throw new Error('Выберите созданный набор в списке «Набор» на вкладке «Результат» или выделите его на холсте.');
 }
 function exportItems(frame:FrameNode){return frame.children.filter((c):c is FrameNode=>c.type==='FRAME'&&c.visible&&c.getSharedPluginData(DATA_NS,'placeholder')!=='1'&&(!!c.getSharedPluginData(DATA_NS,'size')||/^\d+×\d+/.test(c.name)));}
+function exportInfo(c:FrameNode){return {id:c.id,w:Math.round(c.width),h:Math.round(c.height),name:c.name};}
 function alternateInfo(m:MasterNode){return {id:m.id,name:m.name,width:Math.round(m.width),height:Math.round(m.height),savedSubject:readSettings(m)?.options.subject||null};}
 function checkAlternate(n:BaseNode|null,primary:BaseNode|null):MasterNode{
   if(!n||!isMaster(n))throw new Error('Выделите фрейм или группу с дополнительным мастером.');
@@ -846,6 +847,16 @@ figma.ui.onmessage=async (message:UiMessage)=>{
     if(message.type==='cancel'){cancelled=true;return;}
     if(message.type==='ready'){send({type:'presets',sizes:PRESETS,platforms:PLATFORMS});send({type:'ai-config',config:await aiConfig()});try{await capture();}catch(e){send({type:'status',text:messageText(e)});}return;}
     if(message.type==='ai-config-save'){await figma.clientStorage.setAsync('aiConfig',validAiConfig(message.config));send({type:'ai-config-saved'});return;}
+    // The banners of the set that export would take: lets the panel offer single sizes. Read-only, so it also answers while busy.
+    if(message.type==='export-list'){
+      if(message.fromSelection){
+        const sel=figma.currentPage.selection,frame=sel.length?batchAncestor(sel[0]):null;if(!frame)throw new Error('Выделите на холсте баннеры созданного набора.');
+        const items=exportItems(frame),picked=items.filter(c=>sel.some(n=>n.id===c.id||isInside(n,c))).map(c=>c.id);
+        send({type:'export-items',batchId:frame.id,name:frame.name,items:items.map(exportInfo),picked:picked.length?picked:items.map(c=>c.id)});return;
+      }
+      let frame:FrameNode|null=null;try{frame=await exportTarget(message.batchId);}catch(_e){}
+      send({type:'export-items',batchId:frame?frame.id:'',name:frame?frame.name:'',items:frame?exportItems(frame).map(exportInfo):[]});return;
+    }
     if(busy)return;
     if(message.type==='save-settings'){
       const m=await figma.getNodeByIdAsync(message.masterId||'');if(!m||!isMaster(m))throw new Error('Мастер недоступен.');
@@ -865,8 +876,9 @@ figma.ui.onmessage=async (message:UiMessage)=>{
     }
     if(message.type==='open-link'){figma.openExternal(AUTHOR_URL);return;}
     if(message.type==='export'){
-      const frame=await exportTarget(message.batchId);const items=exportItems(frame);
-      if(!items.length)throw new Error('В наборе нет баннеров для выгрузки.');
+      const frame=await exportTarget(message.batchId),ids=Array.isArray(message.ids)&&message.ids.length?message.ids:null;
+      const items=exportItems(frame).filter(c=>!ids||ids.includes(c.id));
+      if(!items.length)throw new Error(ids?'Отмеченные баннеры не найдены в наборе. Нажмите «Обновить список».':'В наборе нет баннеров для выгрузки.');
       busy=true;ownsBusy=true;cancelled=false;send({type:'busy',value:true});
       send({type:'export-start',total:items.length,name:frame.name});
       for(let i=0;i<items.length;i++){if(cancelled)break;const c=items[i];

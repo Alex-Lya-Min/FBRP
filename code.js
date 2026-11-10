@@ -1702,9 +1702,10 @@ async function exportTarget(id) {
     const sel = figma.currentPage.selection[0], b = sel && batchAncestor(sel);
     if (b)
         return b;
-    throw new Error('Выберите созданный набор в списке «Обновить созданный набор» или выделите его на холсте.');
+    throw new Error('Выберите созданный набор в списке «Набор» на вкладке «Результат» или выделите его на холсте.');
 }
 function exportItems(frame) { return frame.children.filter((c) => c.type === 'FRAME' && c.visible && c.getSharedPluginData(DATA_NS, 'placeholder') !== '1' && (!!c.getSharedPluginData(DATA_NS, 'size') || /^\d+×\d+/.test(c.name))); }
+function exportInfo(c) { return { id: c.id, w: Math.round(c.width), h: Math.round(c.height), name: c.name }; }
 function alternateInfo(m) { var _a; return { id: m.id, name: m.name, width: Math.round(m.width), height: Math.round(m.height), savedSubject: ((_a = readSettings(m)) === null || _a === void 0 ? void 0 : _a.options.subject) || null }; }
 function checkAlternate(n, primary) {
     if (!n || !isMaster(n))
@@ -1768,6 +1769,24 @@ figma.ui.onmessage = async (message) => {
             send({ type: 'ai-config-saved' });
             return;
         }
+        // The banners of the set that export would take: lets the panel offer single sizes. Read-only, so it also answers while busy.
+        if (message.type === 'export-list') {
+            if (message.fromSelection) {
+                const sel = figma.currentPage.selection, frame = sel.length ? batchAncestor(sel[0]) : null;
+                if (!frame)
+                    throw new Error('Выделите на холсте баннеры созданного набора.');
+                const items = exportItems(frame), picked = items.filter(c => sel.some(n => n.id === c.id || isInside(n, c))).map(c => c.id);
+                send({ type: 'export-items', batchId: frame.id, name: frame.name, items: items.map(exportInfo), picked: picked.length ? picked : items.map(c => c.id) });
+                return;
+            }
+            let frame = null;
+            try {
+                frame = await exportTarget(message.batchId);
+            }
+            catch (_e) { }
+            send({ type: 'export-items', batchId: frame ? frame.id : '', name: frame ? frame.name : '', items: frame ? exportItems(frame).map(exportInfo) : [] });
+            return;
+        }
         if (busy)
             return;
         if (message.type === 'save-settings') {
@@ -1812,10 +1831,10 @@ figma.ui.onmessage = async (message) => {
             return;
         }
         if (message.type === 'export') {
-            const frame = await exportTarget(message.batchId);
-            const items = exportItems(frame);
+            const frame = await exportTarget(message.batchId), ids = Array.isArray(message.ids) && message.ids.length ? message.ids : null;
+            const items = exportItems(frame).filter(c => !ids || ids.includes(c.id));
             if (!items.length)
-                throw new Error('В наборе нет баннеров для выгрузки.');
+                throw new Error(ids ? 'Отмеченные баннеры не найдены в наборе. Нажмите «Обновить список».' : 'В наборе нет баннеров для выгрузки.');
             busy = true;
             ownsBusy = true;
             cancelled = false;
