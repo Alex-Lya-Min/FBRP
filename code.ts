@@ -1,10 +1,12 @@
-// Banner Adapt 1.7 — local layout engine. Optional AI framing: one small request per master with the user's own key,
+// Banner Adapt 1.8 — local layout engine. Optional AI framing: one small request per master with the user's own key,
 // the answer is the scene geometry only; every format is still computed locally.
 // Author: Алексей Лямин (Alex Lyamin) · https://alexlyamin.framer.website/ru-home
 type Role = 'logo'|'headline'|'date'|'body'|'cta'|'visual';
 type MasterNode = FrameNode | GroupNode | ComponentNode | InstanceNode;
 type DesignNode = MasterNode | TextNode | RectangleNode | EllipseNode | VectorNode | BooleanOperationNode | PolygonNode | StarNode | LineNode;
-type Assets = Partial<Record<Role, DesignNode>>;
+// backdrop — what the master keeps behind everything (its own gradient or image fill, gradient layers) when the
+// picture is a separate block or absent; it is not a role and is built by the plugin.
+type Assets = Partial<Record<Role, DesignNode>>&{backdrop?:DesignNode};
 type Size = [number, number];
 type Box = {x:number;y:number;w:number;h:number};
 type Align = 'start'|'center'|'end';
@@ -78,12 +80,15 @@ function coversMaster(source:DesignNode,master:MasterNode){
   const t=Math.max(1,Math.min(b.width,b.height)*.015);
   return a.x<=b.x+t&&a.y<=b.y+t&&a.x+a.width>=b.x+b.width-t&&a.y+a.height>=b.y+b.height-t;
 }
-// A picture is a background when it covers the master: an image layer, or a group/frame with an image inside.
+// A picture is a background when it covers the master: an image or gradient layer, or a group/frame with an image inside.
 // "Fill the banner" (imageFit = fill) always treats the picture as a background scaled over the whole format.
 function hasImage(n:DesignNode){return imagePaint(n)||descendants(n,400).some(imagePaint);}
+function gradientPaint(n:BaseNode){return 'fills'in n&&Array.isArray(n.fills)&&n.fills.some(p=>p.visible!==false&&(p.opacity??1)>.01&&p.type.startsWith('GRADIENT'));}
+// A main component is copied as an instance, so the results never contain new main components.
+function copyOf(n:DesignNode):DesignNode{return n.type==='COMPONENT'?n.createInstance():n.clone();}
 function backgroundMode(source:DesignNode,master:MasterNode,mode='auto',fit='auto'){
   if(['fill','width','height'].includes(fit)&&mode!=='block')return true;
-  return mode==='background'||(mode!=='block'&&hasImage(source)&&coversMaster(source,master));
+  return mode==='background'||(mode!=='block'&&(hasImage(source)||gradientPaint(source))&&coversMaster(source,master));
 }
 // Picture scaling: fill — cover the area, cropping the edges; width / height — scale proportionally to the banner's
 // width or height (the other side is cropped, or the gap is filled); extend — fit the object and fill the rest;
@@ -123,8 +128,12 @@ function pruneClone(orig:SceneNode,clone:SceneNode,remove:Set<string>){
 function sceneBackground(master:MasterNode,stage:FrameNode,sources:Assets):FrameNode{
   const remove=new Set<string>();
   for(const k of ROLE_KEYS){const s=sources[k];if(!s||k==='visual')continue;
-    remove.add(s.id);}
+    remove.add(s.id);if(k==='cta')for(const b of ctaBacking(s,master))remove.add(b.id);}
   for(const t of descendants(master,3000))if(t.type==='TEXT')remove.add(t.id);
+  return sceneWithout(master,stage,remove);
+}
+// A copy of the master in a master-sized clipping frame, without the listed layers.
+function sceneWithout(master:MasterNode,stage:FrameNode,remove:Set<string>):FrameNode{
   const wrap=figma.createFrame();stage.appendChild(wrap);wrap.name='Фон · сцена мастера';wrap.resize(master.width,master.height);wrap.fills=[];wrap.clipsContent=true;
   let copy:SceneNode=master.type==='COMPONENT'?master.createInstance():master.clone();wrap.appendChild(copy);
   if(copy.type==='INSTANCE'&&subtreeHas(master,remove))copy=copy.detachInstance();
@@ -132,6 +141,63 @@ function sceneBackground(master:MasterNode,stage:FrameNode,sources:Assets):Frame
   pruneClone(master,copy,remove);copy.name='Сцена';
   if('setSharedPluginData'in copy){copy.setSharedPluginData(DATA_NS,'settings','');copy.setSharedPluginData(DATA_NS,'batch','');copy.setSharedPluginData(DATA_NS,'trial','');}
   return wrap;
+}
+// The part of a layer the master actually shows: cut by the master's bounds and by clipping frames above the layer.
+// null — the layer is fully visible (or not visible at all).
+function visibleRect(source:DesignNode,master:MasterNode):Rect|null{
+  const a=source.absoluteBoundingBox;if(!a)return null;let x0=a.x,y0=a.y,x1=a.x+a.width,y1=a.y+a.height;
+  for(let p:BaseNode|null=source.parent;p;p=p.parent){
+    const top=p.id===master.id;
+    if(top?p.type!=='GROUP':'clipsContent'in p&&p.clipsContent){const b='absoluteBoundingBox'in p?p.absoluteBoundingBox:null;if(b){x0=Math.max(x0,b.x);y0=Math.max(y0,b.y);x1=Math.min(x1,b.x+b.width);y1=Math.min(y1,b.y+b.height);}}
+    if(top)break;}
+  if(x1-x0<1||y1-y0<1)return null;
+  return x0>a.x+1||y0>a.y+1||x1<a.x+a.width-1||y1<a.y+a.height-1?{x:x0,y:y0,width:x1-x0,height:y1-y0}:null;
+}
+// A copy of a partly hidden picture, cropped to what the master shows; null when nothing is hidden.
+function clippedCopy(source:DesignNode,master:MasterNode,stage:FrameNode):FrameNode|null{
+  const r=visibleRect(source,master);if(!r)return null;
+  const frame=figma.createFrame();stage.appendChild(frame);frame.name='Изображение · видимая часть';frame.fills=[];frame.clipsContent=true;frame.resize(r.width,r.height);
+  const n=copyOf(source),m=cloneData(source.absoluteTransform);frame.appendChild(n);resetPosition(n);m[0][2]-=r.x;m[1][2]-=r.y;n.relativeTransform=m;return frame;
+}
+// Button geometry: a box around its label that is still a button and not a whole content block.
+function buttonSized(b:Rect,t:Rect,master:MasterNode){
+  return b.width<=Math.max(t.width*5,t.width+t.height*8)&&b.height<=t.height*5&&b.width*b.height<=master.width*master.height*.25;
+}
+const holds=(b:Rect,t:Rect)=>b.x<=t.x+2&&b.y<=t.y+2&&b.x+b.width>=t.x+t.width-2&&b.y+b.height>=t.y+t.height-2;
+// The layer that is the whole button for a label: the outermost group, frame or instance around it that holds
+// no other text and is button-sized. The label itself when it is not wrapped.
+function buttonContainer(text:TextNode,master:MasterNode):DesignNode{
+  const t=text.absoluteBoundingBox;let best:DesignNode=text;if(!t)return best;
+  for(let p:BaseNode|null=text.parent;p&&p.id!==master.id&&isMaster(p);p=p.parent){
+    const b=p.absoluteBoundingBox;if(!b||!buttonSized(b,t,master)||descendants(p).filter(n=>n.type==='TEXT').length!==1)break;best=p;}
+  return best;
+}
+// A button drawn as shapes with a separate label over them, not grouped: the button-sized shapes right behind the label.
+function ctaBacking(text:DesignNode,master:MasterNode):DesignNode[]{
+  const par=text.parent,t=text.absoluteBoundingBox;if(text.type!=='TEXT'||!par||!('children'in par)||!t)return [];
+  const out:DesignNode[]=[];
+  for(const n of par.children){if(n.id===text.id)break;if(!n.visible||!isDesign(n)||n.type==='TEXT'||'children'in n||!paintVisible(n))continue;
+    const b=n.absoluteBoundingBox;if(b&&holds(b,t)&&buttonSized(b,t,master))out.push(n);}
+  return out;
+}
+// A label looks like a button when its container is painted (own fill or stroke, or a shape behind the label),
+// or when a loose shape sits right behind it.
+function buttonLike(text:TextNode,master:MasterNode){
+  const c=buttonContainer(text,master),t=text.absoluteBoundingBox;if(!t)return false;
+  if(c===text)return ctaBacking(text,master).length>0;
+  return paintVisible(c)||descendants(c).some(n=>{const b=n.absoluteBoundingBox;return n.type!=='TEXT'&&paintVisible(n)&&!!b&&holds(b,t);});
+}
+// The master's own backdrop for layouts where the picture is a separate block or absent: the master's gradient or
+// image fill and gradient layers covering it. null for a plain colour — then "Resize background" is used as before.
+const BACKDROP='Фон мастера';
+function masterBackdrop(master:MasterNode,stage:FrameNode,sources:Assets):FrameNode|null{
+  const fills='fills'in master&&Array.isArray(master.fills)?master.fills:[],own=fills.some(p=>p.visible!==false&&(p.opacity??1)>.01&&p.type!=='SOLID');
+  const roleNodes=ROLE_KEYS.map(k=>sources[k]).filter((n):n is DesignNode=>!!n);
+  const layers=descendants(master,3000).filter(n=>!('children'in n)&&n.type!=='TEXT'&&gradientPaint(n)&&coversMaster(n,master)&&!roleNodes.some(r=>isInside(n,r)));
+  if(!own&&!layers.length)return null;
+  const frame=figma.createFrame();stage.appendChild(frame);frame.name=BACKDROP;frame.resize(master.width,master.height);frame.clipsContent=true;frame.fills=cloneData(fills) as Paint[];
+  for(const l of layers){const n=l.clone();frame.appendChild(n);resetPosition(n);n.relativeTransform=relativeToMaster(l,master);}
+  return frame;
 }
 // Bounds of nodes relative to the master, 0–1; used to learn where the master keeps its text relative to the picture.
 function unionBox(list:(DesignNode|undefined)[],master:MasterNode):Rect01|null{
@@ -147,22 +213,31 @@ function masterMetrics(sources:Assets,assets:Assets,master:MasterNode):Metrics{
   const H=sources.headline?sizeOf(sources.headline):0,ref=H||Math.max(12,master.height*.04);
   const box=(n?:DesignNode)=>n?.absoluteBoundingBox||null;
   const gap=(a?:DesignNode,b?:DesignNode,fallback=.35)=>{const x=box(a),y=box(b);if(!x||!y)return fallback;const g=y.y-(x.y+x.height);return g>=0&&g<ref*3?g/ref:fallback;};
-  return {head:ref,date:sources.date?sizeOf(sources.date)||ref*.55:ref*.55,body:sources.body?sizeOf(sources.body)||ref*.6:ref*.6,cta:sources.cta?sources.cta.height:ref*1.4,
-    logoH:assets.logo?assets.logo.height/ref:0,gapDate:gap(sources.date,sources.headline,.3),gapBody:gap(sources.headline,sources.body,.35),gapCta:gap(sources.body||sources.headline,sources.cta,.55),mw:master.width,mh:master.height,headEm:sources.headline?sources.headline.width/ref:0,textBox:unionBox([sources.date,sources.headline,sources.body,sources.cta],master),visualBox:unionBox([sources.visual],master),textLum:textLuminance(sources.headline)} as Metrics;
+  return {head:ref,date:sources.date?sizeOf(sources.date)||ref*.55:ref*.55,body:sources.body?sizeOf(sources.body)||ref*.6:ref*.6,cta:assets.cta?assets.cta.height:sources.cta?sources.cta.height:ref*1.4,
+    logoH:assets.logo?assets.logo.height/ref:0,gapDate:gap(sources.date,sources.headline,.3),gapBody:gap(sources.headline,sources.body,.35),gapCta:gap(sources.body||sources.headline,sources.cta,.55),mw:master.width,mh:master.height,headEm:sources.headline?sources.headline.width/ref:0,textBox:unionBox([sources.date,sources.headline,sources.body,sources.cta],master),visualBox:(()=>{const v=sources.visual&&visibleRect(sources.visual,master),mb=master.absoluteBoundingBox;return v&&mb?{x:(v.x-mb.x)/mb.width,y:(v.y-mb.y)/mb.height,w:v.width/mb.width,h:v.height/mb.height}:unionBox([sources.visual],master);})(),textLum:textLuminance(sources.headline)} as Metrics;
 }
 function paintVisible(n:DesignNode){return ('fills'in n && Array.isArray(n.fills)&&n.fills.some(p=>p.visible!==false&&(p.opacity??1)>.01))||('strokes'in n&&n.strokes.some(p=>p.visible!==false));}
 function hexColor(n:RGB){return '#'+[n.r,n.g,n.b].map(v=>Math.round(clamp(v,0,1)*255).toString(16).padStart(2,'0')).join('');}
 function rgb(hex:string):RGB{if(!/^#[\da-f]{6}$/i.test(hex))throw new Error('Укажите цвет в формате #112233.');return {r:parseInt(hex.slice(1,3),16)/255,g:parseInt(hex.slice(3,5),16)/255,b:parseInt(hex.slice(5,7),16)/255};}
 function analyze(master:MasterNode){
   const nodes=descendants(master), texts=nodes.filter(n=>n.type==='TEXT');
-  const ctaText=texts.find(n=>/регистрац|подробнее|купить|заказать|узнать|перейти|register|learn more|sign up|buy now/i.test(n.characters));
-  const cta=nodes.find(n=>/^(cta|button|кнопка)(\b|[ _-])/i.test(n.name))||(ctaText&&ctaText.parent&&ctaText.parent!==master&&['FRAME','INSTANCE','COMPONENT','GROUP'].includes(ctaText.parent.type)?ctaText.parent:ctaText);
-  const freeTexts=texts.filter(n=>!cta||!isInside(n,cta));
-  const date=freeTexts.find(n=>/\b\d{1,2}[–—-]\d{1,2}|октября|ноября|декабря|января|февраля|марта|апреля|июня|июля|августа|сентября|\d{2}\.\d{2}/i.test(n.characters));
+  // Button: a layer named as one, else a short label with a call to action, else any short label on a painted
+  // plate. The whole button is the outermost wrapper around the label that holds no other text.
+  const area=master.width*master.height,DATE=/\b\d{1,2}[–—-]\d{1,2}|октября|ноября|декабря|января|февраля|марта|апреля|июня|июля|августа|сентября|\d{2}\.\d{2}/i;
+  const short=(n:TextNode)=>{const c=n.characters.trim();return c.length>0&&c.length<=32&&!c.includes('\n');};
+  const named=nodes.find(n=>n.type!=='TEXT'&&/\b(cta|btn|button)|кнопк/i.test(n.name)&&n.width*n.height<=area*.35);
+  const words=texts.filter(n=>short(n)&&/регистр|подробнее|купить|заказать|узнать|перейти|участвовать|получить|смотреть|попробовать|заявк|записаться|начать|скачать|выбрать|оформить|забронировать|присоединиться|подключить|register|learn more|read more|sign up|buy|shop now|get |try |join|book|download|subscribe|start/i.test(n.characters));
+  const fontOf=(n:TextNode)=>typeof n.fontSize==='number'?n.fontSize:20,biggest=Math.max(0,...texts.map(fontOf));
+  const renamed=texts.find(n=>/^(cta|btn|button|кнопка)/i.test(n.name)&&n.name.trim()!==n.characters.trim());
+  const ctaText=named?undefined:renamed||words.find(n=>buttonLike(n,master))||texts.find(n=>short(n)&&!DATE.test(n.characters)&&/[a-zа-яё]{3}/i.test(n.characters)&&buttonLike(n,master))||words.find(n=>texts.length>1&&fontOf(n)<biggest);
+  const cta=named||(ctaText&&buttonContainer(ctaText,master));
+  const namedLogo=nodes.find(n=>/logo|логотип/i.test(n.name)&&n.width*n.height<=area*.35&&n!==cta);
+  const freeTexts=texts.filter(n=>(!cta||!isInside(n,cta))&&(!namedLogo||!isInside(n,namedLogo)));
+  const date=freeTexts.find(n=>DATE.test(n.characters));
   const headline=freeTexts.filter(n=>n!==date).sort((a,b)=>{const sz=(n:TextNode)=>typeof n.fontSize==='number'?n.fontSize:20;return sz(b)-sz(a)||b.width*b.height-a.width*a.height;})[0];
   const images=nodes.filter(imagePaint).sort((a,b)=>b.width*b.height-a.width*a.height);
   const visual=nodes.find(n=>/^(hero|visual|key visual|имидж|иллюстрация)/i.test(n.name))||images[0];
-  let logo=nodes.find(n=>/logo|логотип/i.test(n.name));
+  let logo=namedLogo;
   if(!logo)logo=nodes.find(n=>n.parent===master&&['FRAME','GROUP'].includes(n.type)&&n!==cta&&n!==visual&&descendants(n).some(x=>x.type==='VECTOR')&&!descendants(n).some(x=>x.type==='TEXT'||imagePaint(x)));
   const body=freeTexts.find(n=>n!==headline&&n!==date);
   const roles:Record<Role,string>={logo:'',headline:'',date:'',body:'',cta:'',visual:''};for(const k of ROLE_KEYS){const n=({logo,headline,date,body,cta,visual})[k];roles[k]=n?n.id:'';}
@@ -170,6 +245,9 @@ function analyze(master:MasterNode){
   const large=[master,...nodes.filter(n=>n.width*n.height>=master.width*master.height*.35)];
   const solids:SolidPaint[]=[];for(const n of large)if('fills'in n&&Array.isArray(n.fills))for(const p of n.fills)if(p.type==='SOLID'&&p.visible!==false&&(p.opacity??1)>.8)solids.push(p);
   if(solids.length)bg=solids.sort((a,b)=>a.color.r+a.color.g+a.color.b-b.color.r-b.color.g-b.color.b)[0].color;
+  else{ // a gradient background: its darkest stop, as with solid fills
+    const stops:RGB[]=[];for(const n of large)if('fills'in n&&Array.isArray(n.fills))for(const p of n.fills)if(p.visible!==false&&'gradientStops'in p)for(const g of p.gradientStops)if(g.color.a>.8)stops.push({r:g.color.r,g:g.color.g,b:g.color.b});
+    if(stops.length)bg=stops.sort((a,b)=>a.r+a.g+a.b-b.r-b.g-b.b)[0];}
   const candidates=nodes.map(n=>({id:n.id,name:n.name.slice(0,72),type:n.type,width:Math.round(n.width),height:Math.round(n.height),text:n.type==='TEXT'?n.characters.slice(0,200):undefined}));
   return {id:master.id,name:master.name,width:master.width,height:master.height,roles,candidates,background:hexColor(bg),textCount:texts.length};
 }
@@ -225,7 +303,7 @@ function resetPosition(n:DesignNode){n.locked=false;if('layoutPositioning'in n)n
 function inkLeaves(node:DesignNode){
   return (node.type==='VECTOR'?[node]:descendants(node)).filter(n=>['VECTOR','BOOLEAN_OPERATION','TEXT','RECTANGLE','ELLIPSE'].includes(n.type)&&paintVisible(n)&&n.opacity>.1&&(!('effects'in n)||!n.effects.some(e=>e.visible!==false&&e.type==='LAYER_BLUR'))&&!imagePaint(n)).filter((n,i,all)=>!all.some((p,j)=>i!==j&&isInside(n,p)));
 }
-async function prepareAsset(source:DesignNode,role:Role,stage:FrameNode,options:Options,warnings:Set<string>):Promise<DesignNode>{
+async function prepareAsset(source:DesignNode,role:Role,stage:FrameNode,options:Options,warnings:Set<string>,master:MasterNode):Promise<DesignNode>{
   const missing=await loadNodeFonts(source);
   if(missing.length){
     if(!options.outlineMissing)throw new Error('Недоступен шрифт '+missing.join(', ')+'. Установите его или включите перевод в кривые.');
@@ -235,7 +313,14 @@ async function prepareAsset(source:DesignNode,role:Role,stage:FrameNode,options:
     const leaves=inkLeaves(source);
     if(leaves.length&&leaves.length<100){const boxes=leaves.map(n=>n.absoluteBoundingBox).filter((b):b is Rect=>b!==null);const minX=Math.min(...boxes.map(b=>b.x)),minY=Math.min(...boxes.map(b=>b.y)),maxX=Math.max(...boxes.map(b=>b.x+b.width)),maxY=Math.max(...boxes.map(b=>b.y+b.height));const group=figma.createFrame();stage.appendChild(group);group.name='Логотип · без световых эффектов';group.fills=[];group.clipsContent=false;group.resize(Math.max(1,maxX-minX),Math.max(1,maxY-minY));for(const leaf of leaves){const matrix=cloneData(leaf.absoluteTransform),n=leaf.clone();group.appendChild(n);resetPosition(n);matrix[0][2]-=minX;matrix[1][2]-=minY;n.relativeTransform=matrix;}return group;}
   }
-  const n=source.clone();stage.appendChild(n);resetPosition(n);n.name=ROLE_NAMES[role];n.x=0;n.y=0;return n;
+  // A picture partly hidden in the master (it runs past the banner's edge or sits in a clipping frame) keeps that crop.
+  if(role==='visual'){const c=clippedCopy(source,master,stage);if(c){c.name=ROLE_NAMES[role];return c;}}
+  // A loose label over a plate is one button: both go into one frame.
+  if(role==='cta'){const parts=[...ctaBacking(source,master),source],boxes=parts.map(p=>p.absoluteBoundingBox).filter((b):b is Rect=>b!==null);
+    if(parts.length>1&&boxes.length===parts.length){const minX=Math.min(...boxes.map(b=>b.x)),minY=Math.min(...boxes.map(b=>b.y)),maxX=Math.max(...boxes.map(b=>b.x+b.width)),maxY=Math.max(...boxes.map(b=>b.y+b.height));
+      const group=figma.createFrame();stage.appendChild(group);group.name=ROLE_NAMES[role];group.fills=[];group.clipsContent=false;group.resize(Math.max(1,maxX-minX),Math.max(1,maxY-minY));
+      for(const part of parts){const matrix=cloneData(part.absoluteTransform),c=part.clone();group.appendChild(c);resetPosition(c);matrix[0][2]-=minX;matrix[1][2]-=minY;c.relativeTransform=matrix;}return group;}}
+  const n=copyOf(source);stage.appendChild(n);resetPosition(n);n.name=ROLE_NAMES[role];n.x=0;n.y=0;return n;
 }
 function contain(asset:DesignNode,parent:FrameNode,box:Box,align='left',maxScale=Infinity):DesignNode{
   const n=asset.clone();parent.appendChild(n);resetPosition(n);const s=Math.min(box.w/n.width,box.h/n.height,maxScale);n.rescale(s);n.x=box.x+(align==='center'?(box.w-n.width)/2:0);n.y=box.y+(box.h-n.height)/2;return n;
@@ -410,6 +495,8 @@ function textStack(assets:Assets,frame:FrameNode,b:Layout,m:Metrics,options:Opti
   const total=apply(hs);
   if(total>col.h+.5){if(options.enforceMinFont&&head)warnings.add(label+' · заголовок: не помещается при минимуме '+minimum+' px; размер сохранён, нужна ручная правка.');else if(!options.enforceMinFont)warnings.add(label+': текст не помещается в колонку, проверьте макет.');}
   let y=col.y+(b.align==='center'?(col.h-total)/2:b.align==='end'?col.h-total:0);y=Math.max(y,Math.min(col.y,0));
+  // A stack taller than its column first takes the free space above it, so its last item — the button — stays in the banner.
+  {const bottom=h-Math.max(2,h*.04);if(total>col.h+.5&&y+total>bottom)y=Math.max(Math.min(col.y,h*.04),bottom-total);}
   for(const it of items){if(it!==items[0])y+=it.gap*hs;it.node.x=col.x;it.node.y=y;y+=it.node.height;}
   for(const it of items){const actual=it.node.type==='TEXT'?fontMetrics(it.node).min:0;if(it.role!=='cta'&&actual&&actual<minimum-.01)warnings.add(label+' · '+ROLE_NAMES[it.role].toLowerCase()+': шрифт '+actual.toFixed(1)+' px, меньше заданных '+minimum+' px.');}
   if(head&&head.node.type!=='TEXT'){const orig=Number(assets.headline!.getSharedPluginData(DATA_NS,'textMin'));if(!orig)warnings.add(label+' · заголовок: размер шрифта в готовых кривых неизвестен — проверьте читаемость.');}
@@ -480,6 +567,7 @@ function createVariant(assets:Assets,parent:FrameNode,w:number,h:number,options:
   if(!assets.logo)for(let i=0;i<cands.length;i++)cands[i]=withoutLogoSlot(cands[i],w,h);
   const b=chooseLayout(cands,assets.visual,options,m,w,h), frame=figma.createFrame();parent.appendChild(frame);frame.name=w+'×'+h+' · '+b.kind+(b.variant?' · '+b.variant:'');frame.resize(w,h);frame.clipsContent=true;const color=extendOn(options)&&assets.visual?rgb(edgeHex(options)):rgb(options.background);frame.fills=[{type:'SOLID',color}];frame.exportSettings=[{format:'PNG',suffix:'',constraint:{type:'SCALE',value:1}}];
   const label=w+'×'+h;let map:((u:number,v:number)=>{x:number;y:number})|null=null;
+  if(assets.backdrop){const n=assets.backdrop.clone();frame.appendChild(n);n.name=BACKDROP;n.rescale(Math.max(w/n.width,h/n.height));n.x=(w-n.width)/2;n.y=(h-n.height)/2;n.locked=true;}
   if(assets.visual){const v=visualInto(assets.visual,frame,options.isBackground?{x:0,y:0,w,h}:b.visual,b.visual,options.isBackground?{...options,fit:'cover'}:options,color);if(options.isBackground)map=v.map;}
   if(geometry)geometry.map=map;
   const hs=textStack(assets,frame,b,m,options,warnings,label,w,h);
@@ -491,7 +579,7 @@ function createVariant(assets:Assets,parent:FrameNode,w:number,h:number,options:
     let low=measureContrast(frame,options,map).filter(c=>c.ratio<3);
     if(options.scrim!==false&&low.some(c=>c.light&&c.node.type==='TEXT')){
       const idx=frame.children.findIndex(n=>n.name==='Изображение · кадрирование')+1;
-      const fore=frame.children.filter(n=>n.name!=='Изображение · кадрирование'&&n.name!==ROLE_NAMES.cta||b.ctaInStack&&n.name===ROLE_NAMES.cta);
+      const fore=frame.children.filter(n=>n.name!==BACKDROP).filter(n=>n.name!=='Изображение · кадрирование'&&n.name!==ROLE_NAMES.cta||b.ctaInStack&&n.name===ROLE_NAMES.cta);
       addScrim(frame,b,fore,options.shade?rgb(options.shade):color,w,h,idx);
       // A bottom scrim does not reach a logo at the top of vertical formats.
       const vertical=['Квадрат','Вертикаль','Скайскрейпер'].includes(b.kind);low=low.filter(c=>!c.light||(vertical&&c.node.name===ROLE_NAMES.logo));
@@ -558,7 +646,7 @@ function allDesignNodes(root:DesignNode):DesignNode[]{
 async function prepareMaster(master:MasterNode,stage:FrameNode,options:Options,warnings:Set<string>):Promise<DesignNode>{
   const originals=allDesignNodes(master),missingTexts=new Set<string>();
   for(const n of originals)if(n.type==='TEXT'){const missing=await loadNodeFonts(n);if(missing.length){if(!options.outlineMissing)throw new Error('Недоступен шрифт '+missing.join(', '));missingTexts.add(n.id);}}
-  let copy:DesignNode=master.clone();stage.appendChild(copy);resetPosition(copy);copy.x=0;copy.y=0;
+  let copy:DesignNode=master.type==='COMPONENT'?master.createInstance().detachInstance():master.clone();stage.appendChild(copy);resetPosition(copy);copy.x=0;copy.y=0;
   // Missing fonts are outlined per text layer; all other layers remain native.
   async function repair(original:DesignNode,clone:DesignNode):Promise<DesignNode>{
     if(original.type==='TEXT'&&missingTexts.has(original.id)){
@@ -579,6 +667,121 @@ function proportionalVariant(template:DesignNode,parent:FrameNode,w:number,h:num
   const copy=template.clone();frame.appendChild(copy);resetPosition(copy);copy.rescale(w/master.width);copy.x=0;copy.y=0;
   frame.setSharedPluginData(DATA_NS,'size',w+'x'+h);
   for(const n of allDesignNodes(copy))if(n.type==='TEXT'&&n.visible&&typeof n.fontSize==='number'&&n.fontSize<minFont)warnings.add(w+'×'+h+' · «'+n.name+'»: шрифт '+n.fontSize.toFixed(1)+' px.');
+  return frame;
+}
+// ——— Soft adaptation: a format close to a master keeps the master's composition ———
+// The master is read as it is: every text, role layer and small element is a unit with its own place; the rest is the
+// background. Units that sit close together move as one block. Each block keeps its scaled distance to the edge it
+// is nearer to (or stays centred), so margins, alignment and gaps come from the master, not from a built-in scheme.
+// Everything scales by the tighter side; the background covers the format.
+const SOFT_LIMIT=.3; // |ln| of the change in proportions: up to about 1.35×
+type SoftUnit={node:DesignNode;box:Box;centred:boolean;span:boolean};
+type Soft={scene:FrameNode;block:{node:DesignNode;box:Box}|null;units:SoftUnit[];minText:number};
+function softParts(master:MasterNode,sources:Assets,isBackground:boolean){
+  const visual=sources.visual,roleIds=new Set<string>();for(const k of ROLE_KEYS){const n=sources[k];if(n&&k!=='visual')roleIds.add(n.id);}
+  const keys=new Set<string>(roleIds);if(visual)keys.add(visual.id);
+  const mb=master.absoluteBoundingBox!,total=mb.width*mb.height,t=Math.max(1,Math.min(mb.width,mb.height)*.015),out={fg:[] as DesignNode[],block:null as DesignNode|null};
+  const inside=(b:Rect)=>Math.max(0,Math.min(b.x+b.width,mb.x+mb.width)-Math.max(b.x,mb.x))*Math.max(0,Math.min(b.y+b.height,mb.y+mb.height)-Math.max(b.y,mb.y));
+  const big=(n:SceneNode)=>{const b=n.absoluteBoundingBox;return !b||inside(b)>=total*.5;};
+  // A picture block that runs to the banner's edge or is large keeps its share of the banner; a small one is a unit.
+  const bleeds=(n:DesignNode)=>{const b=visibleRect(n,master)||n.absoluteBoundingBox;return !!b&&(inside(b)>=total*.25||b.x<=mb.x+t||b.y<=mb.y+t||b.x+b.width>=mb.x+mb.width-t||b.y+b.height>=mb.y+mb.height-t);};
+  const walk=(parent:BaseNode&ChildrenMixin)=>{for(const c of parent.children){
+    if(!c.visible||!isDesign(c))continue;
+    if(visual&&c.id===visual.id){if(!isBackground){if(bleeds(c))out.block=c;else out.fg.push(c);}continue;}
+    if(roleIds.has(c.id)||c.type==='TEXT'){out.fg.push(c);continue;}
+    if(!('children'in c)){if(!big(c))out.fg.push(c);continue;} // small shape — a unit; large shape — background
+    const holdsKey=subtreeHas(c,keys),masked=c.children.some(k=>'isMask'in k&&k.isMask);
+    if(!holdsKey&&!big(c)){out.fg.push(c);continue;} // small group, frame or instance
+    // Containers with roles inside and large containers are looked into; a small painted or masked one moves as a whole.
+    if(!big(c)&&!(visual&&isInside(visual,c))&&(masked||paintVisible(c))){out.fg.push(c);continue;}
+    if(masked&&!holdsKey)continue; // large masked decor stays in the background
+    walk(c);}};
+  if('children'in master)walk(master);
+  return out;
+}
+async function prepareSoft(src:Source,sources:Assets,stage:FrameNode,warnings:Set<string>):Promise<Soft>{
+  const {master,options}=src,mb=master.absoluteBoundingBox!,parts=softParts(master,sources,!!options.isBackground);
+  if(parts.fg.length>200)throw new Error('в мастере больше 200 отдельных элементов.');
+  const roleOf=new Map<string,Role>();for(const k of ROLE_KEYS){const n=sources[k];if(n)roleOf.set(n.id,k);}
+  const rel=(b:Rect):Box=>({x:b.x-mb.x,y:b.y-mb.y,w:b.width,h:b.height}),t=Math.max(1,Math.min(mb.width,mb.height)*.015);
+  const units:SoftUnit[]=[];let minText=Infinity;
+  for(const u of parts.fg){
+    const role=roleOf.get(u.id),bb=(role==='visual'&&visibleRect(u,master))||u.absoluteBoundingBox;if(!bb)continue;
+    const missing=await loadNodeFonts(u);let n:DesignNode;
+    if(missing.length){
+      if(!options.outlineMissing)throw new Error('Недоступен шрифт '+missing.join(', ')+'. Установите его или включите перевод в кривые.');
+      n=figma.createNodeFromSvg(await u.exportAsync({format:'SVG_STRING',svgOutlineText:true}));stage.appendChild(n);
+      warnings.add('Шрифт недоступен ('+missing.join(', ')+'): слой «'+u.name.slice(0,40)+'» переведён в кривые.');
+    }else{
+      const c=role==='visual'?clippedCopy(u,master,stage):null;
+      if(c)n=c;else{n=copyOf(u);stage.appendChild(n);resetPosition(n);n.relativeTransform=relativeToMaster(u,master);}
+    }
+    n.name=role?ROLE_NAMES[role]:u.name;
+    const fm=fontMetrics(u).min;if(fm>0)minText=Math.min(minText,fm);
+    const box=rel(bb),texts=u.type==='TEXT'?[u]:'children'in u?descendants(u).filter((x):x is TextNode=>x.type==='TEXT'):[];
+    // A plain bar or plate that runs from edge to edge keeps running from edge to edge.
+    const flat=u.type==='RECTANGLE'&&!imagePaint(u)&&Math.abs(u.rotation)<.01;
+    const span=flat&&((box.x<=t&&box.x+box.w>=mb.width-t)||(box.y<=t&&box.y+box.h>=mb.height-t));
+    units.push({node:n,box,centred:texts.some(x=>x.textAlignHorizontal==='CENTER'),span});
+  }
+  const remove=new Set(parts.fg.map(n=>n.id));if(parts.block)remove.add(parts.block.id);
+  for(const x of descendants(master,3000))if(x.type==='TEXT')remove.add(x.id);
+  const scene=sceneWithout(master,stage,remove);
+  let block:Soft['block']=null;
+  if(parts.block){const v=parts.block,r=visibleRect(v,master)||v.absoluteBoundingBox;let n:DesignNode|null=clippedCopy(v,master,stage);
+    if(!n){n=copyOf(v);stage.appendChild(n);resetPosition(n);n.x=0;n.y=0;}
+    if(r)block={node:n,box:rel(r)};}
+  return {scene,block,units,minText:Number.isFinite(minText)?minText:0};
+}
+// New start of a block along one axis. lo/size — the block in the master, M — the master's length, T — the format's.
+// A block near an edge keeps its scaled margin to that edge; a block in the middle keeps its relative centre.
+function softAnchor(lo:number,size:number,M:number,T:number,s:number,centred:boolean){
+  const hi=M-lo-size,near=Math.min(lo,hi),middle=(lo+size/2)/M*T-size*s/2;
+  if(Math.abs(lo-hi)<=.02*M&&(centred||near>.12*M))return middle;
+  if(near<=.12*M||near<=.6*Math.max(lo,hi))return lo<=hi?lo*s:T-(hi+size)*s;
+  return middle;
+}
+function softVariant(soft:Soft,parent:FrameNode,w:number,h:number,master:MasterNode,options:Options,warnings:Set<string>,geometry:{map:((u:number,v:number)=>{x:number;y:number})|null}){
+  const mw=master.width,mh=master.height,s=Math.min(w/mw,h/mh),label=w+'×'+h,full={x:0,y:0,w,h};
+  const frame=figma.createFrame();parent.appendChild(frame);frame.name=label+' · Адаптация мастера';frame.resize(w,h);frame.clipsContent=true;
+  const color=rgb(options.background);frame.fills=[{type:'SOLID',color}];frame.exportSettings=[{format:'PNG',suffix:'',constraint:{type:'SCALE',value:1}}];
+  // Background: covers the format; the main object keeps its place in the banner.
+  if(options.isBackground){const sb=options.subject&&!options.focusOverride?options.subject:null;
+    geometry.map=visualInto(soft.scene,frame,full,sb?{x:sb.x*w,y:sb.y*h,w:sb.w*w,h:sb.h*h}:full,{...options,fit:'cover'},color).map;}
+  else visualInto(soft.scene,frame,full,full,{...options,isBackground:true,fit:'cover',subject:null,focusOverride:false,focusX:50,focusY:50,zoom:100,imageFit:'fill',fade:false},color).frame.name=BACKDROP;
+  // Picture block: the same share of the banner as in the master, cropped around the object.
+  if(soft.block){const b=soft.block.box,box={x:b.x/mw*w,y:b.y/mh*h,w:b.w/mw*w,h:b.h/mh*h};
+    visualInto(soft.block.node,frame,box,box,{...options,isBackground:false,fade:false,imageFit:options.imageFit==='auto'?'fill':options.imageFit},color);}
+  // Units closer than the gap move together as one block.
+  const rigid=soft.units.filter(u=>!u.span),gap=Math.min(mw,mh)*.045,root=rigid.map((_,i)=>i);
+  const find=(i:number):number=>root[i]===i?i:(root[i]=find(root[i]));
+  for(let i=0;i<rigid.length;i++)for(let j=i+1;j<rigid.length;j++){const a=rigid[i].box,b=rigid[j].box;
+    if(Math.max(a.x,b.x)-Math.min(a.x+a.w,b.x+b.w)<=gap&&Math.max(a.y,b.y)-Math.min(a.y+a.h,b.y+b.h)<=gap)root[find(i)]=find(j);}
+  // A block that fills most of the side the format gained is not kept rigid: it is divided at its widest inner gap,
+  // so the top part stays at the top and the bottom part at the bottom instead of leaving one side empty.
+  const free=w/mw>h/mh*1.02?'x':h/mh>w/mw*1.02?'y':null,M=free==='x'?mw:mh;
+  const lo=(u:SoftUnit)=>free==='x'?u.box.x:u.box.y,hi=(u:SoftUnit)=>free==='x'?u.box.x+u.box.w:u.box.y+u.box.h;
+  const split=(mem:SoftUnit[]):SoftUnit[][]=>{
+    if(!free||mem.length<2||Math.max(...mem.map(hi))-Math.min(...mem.map(lo))<=.6*M)return [mem];
+    const sorted=[...mem].sort((p,q)=>lo(p)-lo(q));let end=hi(sorted[0]),best=1,at=-1;
+    for(let i=1;i<sorted.length;i++){const g=lo(sorted[i])-end;if(g>best){best=g;at=i;}end=Math.max(end,hi(sorted[i]));}
+    return at<0?[mem]:[...split(sorted.slice(0,at)),...split(sorted.slice(at))];};
+  const blocks=new Map<SoftUnit,{c:Box;x:number;y:number}>();
+  for(let i=0;i<rigid.length;i++){if(find(i)!==i)continue;
+    for(const mem of split(rigid.filter((_,j)=>find(j)===i))){
+      const x0=Math.min(...mem.map(u=>u.box.x)),y0=Math.min(...mem.map(u=>u.box.y)),c={x:x0,y:y0,w:Math.max(...mem.map(u=>u.box.x+u.box.w))-x0,h:Math.max(...mem.map(u=>u.box.y+u.box.h))-y0};
+      const place={c,x:softAnchor(c.x,c.w,mw,w,s,mem.some(u=>u.centred)),y:softAnchor(c.y,c.h,mh,h,s,false)};for(const u of mem)blocks.set(u,place);}}
+  const t=Math.max(1,Math.min(mw,mh)*.015);
+  for(const u of soft.units){ // in the master's layer order
+    const n=u.node.clone();frame.appendChild(n);if(Math.abs(s-1)>1e-4)n.rescale(s);let x:number,y:number;
+    if(u.span){const b=u.box,sx=b.x<=t&&b.x+b.w>=mw-t,sy=b.y<=t&&b.y+b.h>=mh-t;
+      x=sx?b.x*s:softAnchor(b.x,b.w,mw,w,s,false);y=sy?b.y*s:softAnchor(b.y,b.h,mh,h,s,false);
+      if('resize'in n)n.resize(Math.max(.01,sx?w-(mw-b.w)*s:n.width),Math.max(.01,sy?h-(mh-b.h)*s:n.height));}
+    else{const o=blocks.get(u)!;x=o.x+(u.box.x-o.c.x)*s;y=o.y+(u.box.y-o.c.y)*s;}
+    const cur=relBox(n,frame);if(cur){n.x+=x-cur.x;n.y+=y-cur.y;}
+  }
+  if(options.isBackground&&geometry.map&&options.luma)for(const c of measureContrast(frame,options,geometry.map).filter(c=>c.ratio<3))warnings.add(label+': низкий контраст '+c.label+' с фоном ('+c.ratio.toFixed(1)+':1) — проверьте макет.');
+  frame.setSharedPluginData(DATA_NS,'size',w+'x'+h);
   return frame;
 }
 function validSubject(s:unknown):Rect01|null{
@@ -620,7 +823,7 @@ function normalizeOptions(input:Options):Options{
   const options:Options={enforceMinFont:input.enforceMinFont!==false,variantOverrides:validateOverrides(input.variantOverrides),preserveMaster:input.preserveMaster!==false,visualMode:['background','block'].includes(input.visualMode||'')?input.visualMode:'auto',background:input.background,fit:input.fit==='contain'?'contain':'cover',focusX:clamp(Number(input.focusX)||0,0,100),focusY:clamp(Number(input.focusY)||0,0,100),zoom:clamp(Number(input.zoom)||100,100,500),minFont:clamp(Number(input.minFont)||12,6,48),headlineScale:1,visualSide:['left','auto'].includes(input.visualSide)?input.visualSide:'right',fade:!!input.fade,trimLogo:!!input.trimLogo,outlineMissing:!!input.outlineMissing,aiPlan:String(input.aiPlan||''),subject:validSubject(input.subject),luma:validLuma(input.luma),scrim:input.scrim!==false,shade:hexOrUndef(input.shade),edge:hexOrUndef(input.edge)||null,extend:input.extend!==false,alternates:validAlternates(input.alternates),platforms:Array.isArray(input.platforms)?PLATFORMS.map(p=>p.id).filter(id=>input.platforms!.includes(id)):[],campaign:cleanCampaign(input.campaign),placement:['fixed','master'].includes(input.placement||'')?input.placement:'auto',textPos:['top','bottom','left','right'].includes(input.textPos||'')?input.textPos:'auto',busy:validLuma(input.busy),fillColor:input.fillColor==='custom'?'custom':'edge',imageFit:FITS.includes(input.imageFit||'')?input.imageFit:input.imageFit===undefined&&input.extend===false?'fill':'auto',useAi:!!input.useAi,aiScene:validAiScene(input.aiScene),subjectManual:!!input.subjectManual&&!!validSubject(input.subject)};rgb(options.background);return options;
 }
 // One prepared source per master: roles, prepared assets, metrics and the exact-copy template.
-type Source={logoOverText?:boolean;master:MasterNode;roles:Record<Role,string>;options:Options;sources:Assets;assets:Assets;metrics:Metrics|null;template:DesignNode|null;ready:boolean;primary:boolean};
+type Source={soft?:Soft|null;logoOverText?:boolean;master:MasterNode;roles:Record<Role,string>;options:Options;sources:Assets;assets:Assets;metrics:Metrics|null;template:DesignNode|null;ready:boolean;primary:boolean};
 function aspectDistance(m:MasterNode,w:number,h:number){return Math.abs(Math.log((w/h)/(m.width/m.height)));}
 // The master whose proportions are closest to the format; ties go to the primary master.
 function pickSource(list:Source[],w:number,h:number){let best=list[0];for(const s of list)if(aspectDistance(s.master,w,h)<aspectDistance(best.master,w,h)-1e-9)best=s;return best;}
@@ -646,7 +849,7 @@ function freeSide(t:Rect01):Rect01|null{
   const sides=[{x:0,y:0,w:1,h:t.y},{x:0,y:t.y+t.h,w:1,h:1-t.y-t.h},{x:0,y:0,w:t.x,h:1},{x:t.x+t.w,y:0,w:1-t.x-t.w,h:1}].filter(r=>r.w>.15&&r.h>.15);
   if(!sides.length)return null;sides.sort((a,b)=>b.w*b.h-a.w*a.h);const r=sides[0];return {x:r.x,y:r.y,w:Math.min(1,r.w),h:Math.min(1,r.h)};
 }
-async function prepareSource(src:Source,stage:FrameNode,warnings:Set<string>,needAdapt:boolean,needExact:boolean){
+async function prepareSource(src:Source,stage:FrameNode,warnings:Set<string>,needAdapt:boolean,needExact:boolean,needSoft:boolean){
   const {master,options}=src;
   if(needExact&&!src.template)src.template=await prepareMaster(master,stage,options,warnings);
   if(!needAdapt||src.ready)return;
@@ -658,10 +861,13 @@ async function prepareSource(src:Source,stage:FrameNode,warnings:Set<string>,nee
     if(ix*iy>=mb.width*mb.height*.6)warnings.add('Изображение'+where+' занимает большую часть мастера, но обработано как отдельный блок. Чтобы картинка растягивалась на весь баннер, выберите «Изображение и композиция» → «Масштаб картинки» → «Заполнять баннер».');}}
   if(!sources.headline&&!sources.visual)throw new Error('Назначьте хотя бы заголовок или изображение'+where+'.');
   const entries=ROLE_KEYS.filter(k=>sources[k]).map(k=>[k,sources[k]!] as [Role,DesignNode]);for(let i=0;i<entries.length;i++)for(let j=i+1;j<entries.length;j++)if(isInside(entries[i][1],entries[j][1])||isInside(entries[j][1],entries[i][1]))throw new Error('Роли «'+ROLE_NAMES[entries[i][0]]+'» и «'+ROLE_NAMES[entries[j][0]]+'» пересекаются'+where+'. Выберите независимые слои.');
-  for(const t of descendants(master).filter(n=>n.type==='TEXT'))if(!entries.some(([,n])=>isInside(t,n)))warnings.add('Для других пропорций не назначен текст'+where+': «'+t.characters.slice(0,50)+'».');
+  for(const t of descendants(master).filter(n=>n.type==='TEXT'))if(!entries.some(([,n])=>isInside(t,n)))warnings.add('Для форматов, которые собираются по схемам, не назначен текст'+where+': «'+t.characters.slice(0,50)+'».');
   const assets:Assets={};
-  for(const key of ROLE_KEYS)if(sources[key])assets[key]=await prepareAsset(sources[key]!,key,stage,options,warnings);
-  if(options.isBackground&&assets.visual&&sources.visual)assets.visual=coversMaster(sources.visual,master)?sceneBackground(master,stage,sources):masterBackground(assets.visual,sources.visual,master,stage);
+  for(const key of ROLE_KEYS)if(sources[key])assets[key]=await prepareAsset(sources[key]!,key,stage,options,warnings,master);
+  const scene=!!options.isBackground&&!!sources.visual&&coversMaster(sources.visual,master);
+  if(options.isBackground&&assets.visual&&sources.visual)assets.visual=scene?sceneBackground(master,stage,sources):masterBackground(assets.visual,sources.visual,master,stage);
+  // The scene already holds the master's backdrop; otherwise it is carried separately, under the picture and the text.
+  if(!scene){const b=masterBackdrop(master,stage,sources);if(b)assets.backdrop=b;}
   src.sources=sources;src.assets=assets;src.metrics=masterMetrics(sources,assets,master);src.ready=true;
   // Logo over text is allowed only when the master itself has it.
   {const l=sources.logo?.absoluteBoundingBox;src.logoOverText=!!l&&(['headline','date','body'] as Role[]).some(r=>{const t=sources[r]?.absoluteBoundingBox;return !!t&&overlap({x:l.x,y:l.y,w:l.width,h:l.height},{x:t.x,y:t.y,w:t.width,h:t.height})>0;});}
@@ -669,35 +875,42 @@ async function prepareSource(src:Source,stage:FrameNode,warnings:Set<string>,nee
   // the largest side of the master left free by the text block. Designers put text over empty space.
   if(options.isBackground&&!options.subject&&src.metrics.textBox){options.subject=freeSide(src.metrics.textBox);options.subjectGuessed=!!options.subject;}
   if(options.isBackground&&!options.luma)warnings.add('Фон'+where+' не проанализирован (нет рамки объекта и проверки контраста) — расстановка по положению текста в мастере. Откройте «Изображение и композиция» и дождитесь рамки на превью.');
+  // Formats close to this master keep its composition; if the master cannot be read that way, they use the schemes.
+  if(needSoft)try{src.soft=await prepareSoft(src,sources,stage,warnings);}catch(e){src.soft=null;warnings.add('Адаптация мастера'+where+' недоступна ('+messageText(e)+') — близкие форматы собраны по схемам.');}
 }
 async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unknown,input:Options,progress:(done:number,total:number)=>void|Promise<void>=()=>{},isCancelled:()=>boolean=()=>false){
   const sizes=validateSizes(rawSizes),options=normalizeOptions(input),ai=validatePlan(options.aiPlan,sizes),warnings=new Set<string>();
   const list:Source[]=[{master,roles,options,sources:{},assets:{},metrics:null,template:null,ready:false,primary:true},...await alternateSources(master,options,warnings)];
-  const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});return {w,h,src,exact:!!vo.preserveMaster&&sameAspect(src.master,w,h),vo};});
+  const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});const exact=!!vo.preserveMaster&&sameAspect(src.master,w,h);return {w,h,src,exact,soft:!!vo.preserveMaster&&!exact&&aspectDistance(src.master,w,h)<=SOFT_LIMIT,vo};});
   const stage=figma.createFrame();figma.currentPage.appendChild(stage);stage.name='Banner Adapt · подготовка';stage.fills=[];stage.visible=false;stage.x=figma.viewport.center.x;stage.y=figma.viewport.center.y;
   let output:FrameNode|null=null,completed=0;const results:{id:string;w:number;h:number;name:string;status:Status;issues:Issue[]}[]=[];
   try{
-    for(const src of list){const mine=plan.filter(p=>p.src===src);if(mine.length)await prepareSource(src,stage,warnings,mine.some(p=>!p.exact),mine.some(p=>p.exact));}
+    for(const src of list){const mine=plan.filter(p=>p.src===src);if(mine.length)await prepareSource(src,stage,warnings,mine.some(p=>!p.exact),mine.some(p=>p.exact),mine.some(p=>p.soft));}
     if(isCancelled())throw new Error('Создание отменено.');
     if(options.useAi)for(const src of list)if(!src.options.aiScene&&plan.some(p=>p.src===src&&!p.exact))warnings.add('AI-кадрирование: для мастера «'+src.master.name+'» нет ответа AI — использован локальный анализ.');
     output=figma.createFrame();figma.currentPage.appendChild(output);output.name='Banner Adapt · '+master.name;output.fills=[];output.clipsContent=false;
     const mb=master.absoluteBoundingBox!;output.x=mb.x+mb.width+160;output.y=mb.y;
     for(const other of figma.currentPage.children){if(other===output||other===stage||list.some(s=>s.master===other))continue;const ob=other.absoluteBoundingBox;if(ob&&ob.y<output.y+7000&&ob.y+ob.height>output.y&&ob.x+ob.width>output.x&&ob.x<output.x+4500)output.x=ob.x+ob.width+160;}
     let x=0,y=0,rowH=0,maxX=0;const wrap=Math.max(3600,...sizes.map(s=>s[0]));
-    for(const {w,h,src,exact,vo} of plan){if(isCancelled())break;if(x>0&&x+w>wrap){x=0;y+=rowH+100;rowH=0;}
+    for(const {w,h,src,exact,soft,vo} of plan){if(isCancelled())break;if(x>0&&x+w>wrap){x=0;y+=rowH+100;rowH=0;}
       // Each variant keeps the per-format settings; the background analysis belongs to the master it is built from.
       // AI framing (when on) replaces the detected object box: the whole subject or only its core, by the format's proportions.
       const ai=vo.focusOverride?null:aiFraming(src.options,w,h);
       const opts:Options={...vo,isBackground:src.options.isBackground,subject:vo.focusOverride?vo.subject:ai?ai.subject:src.options.subject,aiAnchor:ai?.anchor,luma:src.options.luma,busy:src.options.busy,shade:src.options.shade,edge:src.options.edge};
       // Each format is isolated: an error removes only its own partial layers and leaves a Failed placeholder.
       const before=output.children.length,label=w+'×'+h,mine=new Set<string>();let v:FrameNode,issues:Issue[];
+      // Soft adaptation only where the master's smallest text stays readable; smaller formats are re-laid by the schemes.
+      const k=Math.min(w/src.master.width,h/src.master.height),sf=soft&&src.soft&&(!src.soft.minText||src.soft.minText*k>=options.minFont-.01)?src.soft:null;let kept=false;
       try{
         const geo={map:null as ((u:number,v:number)=>{x:number;y:number})|null};
-        v=exact&&src.template?proportionalVariant(src.template,output,w,h,src.master,mine,options.minFont):createVariant(src.assets,output,w,h,opts,src.metrics!,mine,geo);
+        let made:FrameNode|null=exact&&src.template?proportionalVariant(src.template,output,w,h,src.master,mine,options.minFont):null;
+        if(!made&&sf)try{made=softVariant(sf,output,w,h,src.master,opts,mine,geo);kept=true;}
+          catch(err){for(const n of output.children.slice(before))n.remove();mine.clear();geo.map=null;mine.add(label+': адаптация мастера не удалась ('+messageText(err)+') — формат собран по схеме.');}
+        v=made||createVariant(src.assets,output,w,h,opts,src.metrics!,mine,geo);
         if(!src.primary)v.name+=' · из «'+src.master.name+'»';
         if(ai&&!exact)v.setSharedPluginData(DATA_NS,'aiFraming',ai.core?'core':'whole');
         platformChecks(v,w,h,options.platforms,mine);
-        const geometric=exact?[]:checkGeometry(variantGeometry(v,w,h,src.assets,opts.isBackground?opts.subject||null:null,geo.map,!!src.logoOverText));
+        const geometric=exact?[]:checkGeometry(variantGeometry(v,w,h,kept?null:src.assets,opts.isBackground?opts.subject||null:null,geo.map,kept||!!src.logoOverText));
         // The detailed edge check replaces the general "text crosses the edge" line.
         issues=[...issuesFromReport([...mine],label).filter(i=>!(geometric.some(g=>g.code==='bounds')&&/выходит за границу/.test(i.text))),...geometric];
       }catch(err){
@@ -784,15 +997,19 @@ function exportSmall(n:DesignNode,ai:boolean):Promise<Uint8Array>{
   return n.exportAsync({format:'JPG',constraint:n.width>=n.height?{type:'WIDTH',value:512}:{type:'HEIGHT',value:512}});
 }
 async function sceneBytes(m:MasterNode,n:DesignNode,roles:Record<Role,string>|undefined,scene:boolean,ai=false):Promise<Uint8Array>{
-  if(!scene)return exportSmall(n,ai);
+  if(!scene&&!visibleRect(n,m))return exportSmall(n,ai);
   const sources:Assets={};for(const k of ROLE_KEYS){const rid=roles?.[k];if(!rid)continue;const r=await figma.getNodeByIdAsync(rid);if(r&&isDesign(r)&&isInside(r,m)&&r.id!==m.id)sources[k]=r;}
   const stage=figma.createFrame();figma.currentPage.appendChild(stage);stage.name='Banner Adapt · анализ фона';stage.fills=[];stage.x=-100000;stage.y=-100000;
-  try{return await exportSmall(sceneBackground(m,stage,sources),ai);}finally{stage.remove();}
+  try{return await exportSmall(scene?sceneBackground(m,stage,sources):clippedCopy(n,m,stage)||n,ai);}finally{stage.remove();}
 }
 async function visualPreview(id:string,mode='auto',roles?:Record<Role,string>){
   const m=await figma.getNodeByIdAsync(masterId),n=await figma.getNodeByIdAsync(id);if(!m||!isMaster(m)||!n||!isDesign(n)||!isInside(n,m))return;
   const bg=backgroundMode(n,m,mode),scene=bg&&coversMaster(n,m),preview=scene?m:n;
-  const png=await preview.exportAsync({format:'PNG',constraint:{type:'WIDTH',value:500}});send({type:'preview',kind:'visual',id,isBackground:bg,bytes:Array.from(png)});
+  // A partly hidden block is shown and analysed as the master shows it, the same crop the resizes get.
+  const stage=!scene&&visibleRect(n,m)?figma.createFrame():null;let png:Uint8Array;
+  try{if(stage){figma.currentPage.appendChild(stage);stage.name='Banner Adapt · анализ фона';stage.fills=[];stage.x=-100000;stage.y=-100000;}
+    png=await ((stage&&clippedCopy(n,m,stage))||preview).exportAsync({format:'PNG',constraint:{type:'WIDTH',value:500}});}finally{if(stage)stage.remove();}
+  send({type:'preview',kind:'visual',id,isBackground:bg,bytes:Array.from(png)});
   send({type:'scene',id,isBackground:bg,bytes:Array.from(await sceneBytes(m,n,roles,scene))});
 }
 // The picture for AI framing: the main master's image (by layer id) or an extra master's (by its id).
