@@ -1427,13 +1427,14 @@ function hasReserve(master) {
 // The part of the master a format is built from, and the scales. Without reserve it is the whole master. With
 // reserve it is the content plus a normal margin (7% of the format's shorter side), so the content fills the format.
 // s — scale of the elements, bg — scale of the background (it must also cover the format).
-function softFrame(soft, master, w, h) {
+function softFrame(soft, master, w, h, platforms) {
     const mw = master.width, mh = master.height, C = soft.content;
     let V = { x: 0, y: 0, w: mw, h: mh };
     if (soft.reserve && C.w > 0 && C.h > 0) {
-        const p = SOFT_PAD * Math.min(w, h), s0 = Math.min((w - 2 * p) / C.w, (h - 2 * p) / C.h), pad = p / s0;
-        const x0 = Math.max(0, C.x - pad), y0 = Math.max(0, C.y - pad);
-        V = { x: x0, y: y0, w: Math.min(mw, C.x + C.w + pad) - x0, h: Math.min(mh, C.y + C.h + pad) - y0 };
+        // The platform's reserved strips (VK: the top 10%) widen the margin on that side.
+        const rules = platformRules(platforms, w, h), p = SOFT_PAD * Math.min(w, h), pt = Math.max(p, rules.safeTop * h * 1.02), pb = Math.max(p, rules.safeBottom * h * 1.02), s0 = Math.min((w - 2 * p) / C.w, (h - pt - pb) / C.h);
+        const x0 = Math.max(0, C.x - p / s0), y0 = Math.max(0, C.y - pt / s0);
+        V = { x: x0, y: y0, w: Math.min(mw, C.x + C.w + p / s0) - x0, h: Math.min(mh, C.y + C.h + pb / s0) - y0 };
     }
     const s = Math.min(w / V.w, h / V.h);
     return { V, s, bg: Math.max(s, w / mw, h / mh) };
@@ -1579,7 +1580,7 @@ function softAnchor(lo, size, M, T, s, centred) {
     return middle;
 }
 function softVariant(soft, parent, w, h, master, options, warnings, geometry) {
-    const mw = master.width, mh = master.height, { V, s, bg } = softFrame(soft, master, w, h), label = w + '×' + h;
+    const mw = master.width, mh = master.height, { V, s, bg } = softFrame(soft, master, w, h, options.platforms), label = w + '×' + h;
     const frame = figma.createFrame();
     parent.appendChild(frame);
     frame.name = label + ' · Адаптация мастера';
@@ -1600,9 +1601,17 @@ function softVariant(soft, parent, w, h, master, options, warnings, geometry) {
         const n = soft.scene.clone();
         crop.appendChild(n);
         n.rescale(bg);
-        const sb = options.isBackground && options.subject && !options.focusOverride ? options.subject : null, C = soft.content;
+        const sb = options.isBackground && options.subject && !options.focusOverride && !options.subjectGuessed ? options.subject : null, C = soft.content;
         const ax = sb ? (sb.x + sb.w / 2) * mw : C.x + C.w / 2, ay = sb ? (sb.y + sb.h / 2) * mh : C.y + C.h / 2;
-        const x = clamp((ax - V.x) / V.w * w - ax * bg, Math.min(0, w - mw * bg), 0), y = clamp((ay - V.y) / V.h * h - ay * bg, Math.min(0, h - mh * bg), 0);
+        // When the background is larger than the elements, the object is nudged back inside the format if it fits there.
+        const inside = (pos, lo, len, T) => { const a = pos + lo * bg, b = a + len * bg; return len * bg > T ? pos : a < 0 ? pos - a : b > T ? pos - (b - T) : pos; };
+        let x = (ax - V.x) / V.w * w - ax * bg, y = (ay - V.y) / V.h * h - ay * bg;
+        if (sb) {
+            x = inside(x, sb.x * mw, sb.w * mw, w);
+            y = inside(y, sb.y * mh, sb.h * mh, h);
+        }
+        x = clamp(x, Math.min(0, w - mw * bg), 0);
+        y = clamp(y, Math.min(0, h - mh * bg), 0);
         n.x = x;
         n.y = y;
         if (options.isBackground)
@@ -1842,7 +1851,12 @@ async function alternateSources(primary, options, warnings) {
             const { focusX, focusY } = v, rest = __rest(v, ["focusX", "focusY"]);
             overrides[k] = rest;
         }
-        const own = Object.assign(Object.assign({}, options), { alternates: [], variantOverrides: overrides, aiScene: a.aiScene || null, subject: a.subject || (saved === null || saved === void 0 ? void 0 : saved.subject) || null, luma: a.luma || null, busy: a.busy || null, shade: a.shade, edge: a.edge || null, visualMode: (saved === null || saved === void 0 ? void 0 : saved.visualMode) || options.visualMode });
+        let bg = options.background;
+        try {
+            bg = analyze(m).background;
+        }
+        catch (_e) { }
+        const own = Object.assign(Object.assign({}, options), { background: bg, alternates: [], variantOverrides: overrides, aiScene: a.aiScene || null, subject: a.subject || (saved === null || saved === void 0 ? void 0 : saved.subject) || null, luma: a.luma || null, busy: a.busy || null, shade: a.shade, edge: a.edge || null, visualMode: (saved === null || saved === void 0 ? void 0 : saved.visualMode) || options.visualMode });
         out.push({ master: m, roles: await rolesFor(m), options: own, sources: {}, assets: {}, metrics: null, template: null, ready: false, primary: false });
     }
     return out;
@@ -1936,6 +1950,9 @@ async function prepareSource(src, stage, warnings, needAdapt, needExact, needSof
             src.soft = null;
             warnings.add('Адаптация мастера' + where + ' недоступна (' + messageText(e) + ') — близкие форматы собраны по схемам.');
         }
+    // With a picture block the schemes also keep what the master has behind everything: large glows, plates, gradients.
+    if (!options.isBackground && src.soft && descendants(src.soft.scene, 3000).some(n => !('children' in n) && paintVisible(n)))
+        assets.backdrop = src.soft.scene;
 }
 async function generate(master, roles, rawSizes, input, progress = () => { }, isCancelled = () => false) {
     const sizes = validateSizes(rawSizes), options = normalizeOptions(input), ai = validatePlan(options.aiPlan, sizes), warnings = new Set();
@@ -1997,14 +2014,14 @@ async function generate(master, roles, rawSizes, input, progress = () => { }, is
             // Each variant keeps the per-format settings; the background analysis belongs to the master it is built from.
             // AI framing (when on) replaces the detected object box: the whole subject or only its core, by the format's proportions.
             const ai = vo.focusOverride ? null : aiFraming(src.options, w, h);
-            const opts = Object.assign(Object.assign({}, vo), { isBackground: src.options.isBackground, subject: vo.focusOverride ? vo.subject : ai ? ai.subject : src.options.subject, aiAnchor: ai === null || ai === void 0 ? void 0 : ai.anchor, luma: src.options.luma, busy: src.options.busy, shade: src.options.shade, edge: src.options.edge });
+            const opts = Object.assign(Object.assign({}, vo), { subjectGuessed: src.options.subjectGuessed, isBackground: src.options.isBackground, subject: vo.focusOverride ? vo.subject : ai ? ai.subject : src.options.subject, aiAnchor: ai === null || ai === void 0 ? void 0 : ai.anchor, luma: src.options.luma, busy: src.options.busy, shade: src.options.shade, edge: src.options.edge });
             // Each format is isolated: an error removes only its own partial layers and leaves a Failed placeholder.
             const before = output.children.length, label = w + '×' + h, mine = new Set();
             let v, issues;
             // Soft adaptation only where every text stays readable: not below the minimum font, and text the master already
             // sets smaller than the minimum may lose a quarter at most. Smaller formats are re-laid by the schemes.
             // The background must not outgrow the elements too far either: then the picture no longer matches the text.
-            const sc = soft && src.soft ? softFrame(src.soft, src.master, w, h) : null, sf = sc && src.soft && src.soft.fonts.every(f => f * sc.s >= Math.min(options.minFont, f * .75) - .01) && sc.bg <= sc.s * SOFT_BG ? src.soft : null;
+            const sc = soft && src.soft ? softFrame(src.soft, src.master, w, h, options.platforms) : null, sf = sc && src.soft && src.soft.fonts.every(f => f * sc.s >= Math.min(options.minFont, f * .75) - .01) && sc.bg <= sc.s * SOFT_BG ? src.soft : null;
             let kept = false;
             try {
                 const geo = { map: null };
@@ -2040,7 +2057,7 @@ async function generate(master, roles, rawSizes, input, progress = () => { }, is
                 if (ai && !exact)
                     v.setSharedPluginData(DATA_NS, 'aiFraming', ai.core ? 'core' : 'whole');
                 platformChecks(v, w, h, options.platforms, mine);
-                const geometric = exact ? [] : checkGeometry(variantGeometry(v, w, h, kept ? null : src.assets, opts.isBackground ? opts.subject || null : null, geo.map, kept || !!src.logoOverText));
+                const geometric = exact ? [] : checkGeometry(variantGeometry(v, w, h, kept ? null : src.assets, opts.isBackground && !opts.subjectGuessed ? opts.subject || null : null, geo.map, kept || !!src.logoOverText));
                 // The detailed edge check replaces the general "text crosses the edge" line.
                 issues = [...issuesFromReport([...mine], label).filter(i => !(geometric.some(g => g.code === 'bounds') && /выходит за границу/.test(i.text))), ...geometric];
             }
