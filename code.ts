@@ -1,4 +1,4 @@
-// Banner Adapt 1.8 — local layout engine. Optional AI framing: one small request per master with the user's own key,
+// Banner Adapt 1.9 — local layout engine. Optional AI framing: one small request per master with the user's own key,
 // the answer is the scene geometry only; every format is still computed locally.
 // Author: Алексей Лямин (Alex Lyamin) · https://alexlyamin.framer.website/ru-home
 type Role = 'logo'|'headline'|'date'|'body'|'cta'|'visual';
@@ -14,7 +14,7 @@ type Align = 'start'|'center'|'end';
 type Layout = {kind:string;variant?:string;logo:Box;text:Box;align:Align;ctaInStack:boolean;cta:Box;visual:Box;font:number};
 type Rect01 = {x:number;y:number;w:number;h:number};
 // Typographic proportions measured on the master: sizes relative to the headline and gaps in headline units.
-type Metrics = {head:number;date:number;body:number;cta:number;logoH:number;gapDate:number;gapBody:number;gapCta:number;mw:number;mh:number;headEm:number;textBox:Rect01|null;visualBox:Rect01|null;textLum:number|null};
+type Metrics = {head:number;date:number;body:number;cta:number;logoH:number;gapDate:number;gapBody:number;gapCta:number;mw:number;mh:number;headEm:number;stack?:{role:Role;gap:number}[];textBox:Rect01|null;visualBox:Rect01|null;textLum:number|null};
 type Options = {enforceMinFont?:boolean;variantOverrides?:Record<string,Overrides>;preserveMaster?:boolean;visualMode?:string;isBackground?:boolean;background:string;fit:string;focusX:number;focusY:number;zoom:number;minFont:number;headlineScale:number;visualSide:string;fade:boolean;trimLogo:boolean;outlineMissing:boolean;aiPlan?:string;subject?:Rect01|null;luma?:number[]|null;focusOverride?:boolean;scrim?:boolean;shade?:string;edge?:string|null;extend?:boolean;alternates?:AltMaster[];platforms?:string[];campaign?:string;placement?:string;textPos?:string;busy?:number[]|null;subjectGuessed?:boolean;useAi?:boolean;aiScene?:AiScene|null;aiAnchor?:string;subjectManual?:boolean;imageFit?:string;fillColor?:string};
 // AI framing of a picture: what must stay visible (subject), what is enough when space is tight (core),
 // how to align a tall object, and for each class of proportions whether the whole subject or only its core is kept.
@@ -213,12 +213,21 @@ function masterMetrics(sources:Assets,assets:Assets,master:MasterNode):Metrics{
   const H=sources.headline?sizeOf(sources.headline):0,ref=H||Math.max(12,master.height*.04);
   const box=(n?:DesignNode)=>n?.absoluteBoundingBox||null;
   const gap=(a?:DesignNode,b?:DesignNode,fallback=.35)=>{const x=box(a),y=box(b);if(!x||!y)return fallback;const g=y.y-(x.y+x.height);return g>=0&&g<ref*3?g/ref:fallback;};
+  // The text stack keeps the master's order (a footnote under the button stays under it) and the master's gaps.
+  const fallbackGap:Partial<Record<Role,number>>={date:.3,headline:.3,body:.35,cta:.55};
+  const order=(['date','headline','body','cta'] as Role[]).filter(r=>sources[r]&&box(sources[r])).sort((p,q)=>box(sources[p])!.y-box(sources[q])!.y);
+  const stack=order.map((role,i)=>({role,gap:i?gap(sources[order[i-1]],sources[role],fallbackGap[role]):0}));
   return {head:ref,date:sources.date?sizeOf(sources.date)||ref*.55:ref*.55,body:sources.body?sizeOf(sources.body)||ref*.6:ref*.6,cta:assets.cta?assets.cta.height:sources.cta?sources.cta.height:ref*1.4,
-    logoH:assets.logo?assets.logo.height/ref:0,gapDate:gap(sources.date,sources.headline,.3),gapBody:gap(sources.headline,sources.body,.35),gapCta:gap(sources.body||sources.headline,sources.cta,.55),mw:master.width,mh:master.height,headEm:sources.headline?sources.headline.width/ref:0,textBox:unionBox([sources.date,sources.headline,sources.body,sources.cta],master),visualBox:(()=>{const v=sources.visual&&visibleRect(sources.visual,master),mb=master.absoluteBoundingBox;return v&&mb?{x:(v.x-mb.x)/mb.width,y:(v.y-mb.y)/mb.height,w:v.width/mb.width,h:v.height/mb.height}:unionBox([sources.visual],master);})(),textLum:textLuminance(sources.headline)} as Metrics;
+    logoH:assets.logo?assets.logo.height/ref:0,gapDate:gap(sources.date,sources.headline,.3),gapBody:gap(sources.headline,sources.body,.35),gapCta:gap(sources.body||sources.headline,sources.cta,.55),mw:master.width,mh:master.height,headEm:sources.headline?sources.headline.width/ref:0,textBox:unionBox([sources.date,sources.headline,sources.body,sources.cta],master),visualBox:(()=>{const v=sources.visual&&visibleRect(sources.visual,master),mb=master.absoluteBoundingBox;return v&&mb?{x:(v.x-mb.x)/mb.width,y:(v.y-mb.y)/mb.height,w:v.width/mb.width,h:v.height/mb.height}:unionBox([sources.visual],master);})(),textLum:textLuminance(sources.headline),stack} as Metrics;
 }
 function paintVisible(n:DesignNode){return ('fills'in n && Array.isArray(n.fills)&&n.fills.some(p=>p.visible!==false&&(p.opacity??1)>.01))||('strokes'in n&&n.strokes.some(p=>p.visible!==false));}
 function hexColor(n:RGB){return '#'+[n.r,n.g,n.b].map(v=>Math.round(clamp(v,0,1)*255).toString(16).padStart(2,'0')).join('');}
 function rgb(hex:string):RGB{if(!/^#[\da-f]{6}$/i.test(hex))throw new Error('Укажите цвет в формате #112233.');return {r:parseInt(hex.slice(1,3),16)/255,g:parseInt(hex.slice(3,5),16)/255,b:parseInt(hex.slice(5,7),16)/255};}
+// A logo with a product name beside it in one small wrapper is one lockup: the wrapper is the logo.
+function logoLockup(logo:DesignNode,master:MasterNode):DesignNode|null{
+  const w=logo.parent;if(!w||w.id===master.id||!isMaster(w))return null;const inner=descendants(w);
+  return w.height<=logo.height*2.2&&w.width*w.height<=master.width*master.height*.1&&inner.filter(n=>n.type==='TEXT').length<=2&&!inner.some(imagePaint)?w:null;
+}
 function analyze(master:MasterNode){
   const nodes=descendants(master), texts=nodes.filter(n=>n.type==='TEXT');
   // Button: a layer named as one, else a short label with a call to action, else any short label on a painted
@@ -239,7 +248,9 @@ function analyze(master:MasterNode){
   const visual=nodes.find(n=>/^(hero|visual|key visual|имидж|иллюстрация)/i.test(n.name))||images[0];
   let logo=namedLogo;
   if(!logo)logo=nodes.find(n=>n.parent===master&&['FRAME','GROUP'].includes(n.type)&&n!==cta&&n!==visual&&descendants(n).some(x=>x.type==='VECTOR')&&!descendants(n).some(x=>x.type==='TEXT'||imagePaint(x)));
-  const body=freeTexts.find(n=>n!==headline&&n!==date);
+  {const up=logo&&logoLockup(logo,master);if(up&&up!==cta&&up!==visual&&!(headline&&isInside(headline,up)))logo=up;}
+  const lockup=logo;
+  const body=freeTexts.find(n=>n!==headline&&n!==date&&!(lockup&&isInside(n,lockup)));
   const roles:Record<Role,string>={logo:'',headline:'',date:'',body:'',cta:'',visual:''};for(const k of ROLE_KEYS){const n=({logo,headline,date,body,cta,visual})[k];roles[k]=n?n.id:'';}
   let bg={r:.0314,g:.0706,b:.149};
   const large=[master,...nodes.filter(n=>n.width*n.height>=master.width*master.height*.35)];
@@ -323,7 +334,7 @@ async function prepareAsset(source:DesignNode,role:Role,stage:FrameNode,options:
   const n=copyOf(source);stage.appendChild(n);resetPosition(n);n.name=ROLE_NAMES[role];n.x=0;n.y=0;return n;
 }
 function contain(asset:DesignNode,parent:FrameNode,box:Box,align='left',maxScale=Infinity):DesignNode{
-  const n=asset.clone();parent.appendChild(n);resetPosition(n);const s=Math.min(box.w/n.width,box.h/n.height,maxScale);n.rescale(s);n.x=box.x+(align==='center'?(box.w-n.width)/2:0);n.y=box.y+(box.h-n.height)/2;return n;
+  const n=asset.clone();parent.appendChild(n);resetPosition(n);n.name=ROLE_NAMES.logo;const s=Math.min(box.w/n.width,box.h/n.height,maxScale);n.rescale(s);n.x=box.x+(align==='center'?(box.w-n.width)/2:0);n.y=box.y+(box.h-n.height)/2;return n;
 }
 // Nominal type size of a role asset: live text reports its own sizes, outlined text keeps the sizes measured before outlining.
 function sizeOf(n:DesignNode):number{
@@ -478,21 +489,27 @@ function textStack(assets:Assets,frame:FrameNode,b:Layout,m:Metrics,options:Opti
   const col=b.text,items:StackItem[]=[];
   const add=(role:Role,ratio:number,gap:number)=>{const a=assets[role];if(!a)return;const n=a.clone();frame.appendChild(n);resetPosition(n);n.name=ROLE_NAMES[role];
     if(n.type==='TEXT')n.textAlignVertical='TOP';items.push({role,node:n,ratio,base:role==='cta'?a.height:sizeOf(a)||m.head,gap,min:role==='cta'?0:minSizeOf(a)});};
-  add('date',m.date/m.head,m.gapDate);add('headline',1,0);add('body',m.body/m.head,m.gapBody);if(b.ctaInStack)add('cta',m.cta/m.head,m.gapCta);
+  const ratio:Record<string,number>={date:m.date/m.head,headline:1,body:m.body/m.head,cta:m.cta/m.head};
+  if(m.stack&&m.stack.length){for(const it of m.stack)if(it.role!=='cta'||b.ctaInStack)add(it.role,ratio[it.role],it.gap);}
+  else{add('date',m.date/m.head,m.gapDate);add('headline',1,0);add('body',m.body/m.head,m.gapBody);if(b.ctaInStack)add('cta',m.cta/m.head,m.gapCta);}
   if(!items.length)return 0;
   const head=items.find(i=>i.role==='headline');
   const minimum=options.minFont;
   // Smallest headline allowed: the threshold applies to its smallest styled run when the master mixes sizes.
   const floor=head&&options.enforceMinFont?minimum*(head.base/(head.min||head.base)):3;
-  const apply=(hs:number)=>{let total=0;for(const it of items){let size=hs*it.ratio;if(it.role!=='headline'&&it.role!=='cta')size=Math.max(size,Math.min(minimum,hs));sizeItem(it,size,col.w);total+=it.node.height+(it===items[0]?0:it.gap*hs);}return total;};
+  // Secondary text is kept at the minimum size while that fits; when it does not, it follows the master's proportion
+  // to the headline (a footnote stays a footnote) and is reported as small.
+  let relaxed=false;
+  const apply=(hs:number)=>{let total=0;for(const it of items){let size=hs*it.ratio;if(it.role!=='headline'&&it.role!=='cta')size=relaxed?Math.max(size,Math.min(5,hs)):Math.max(size,Math.min(minimum,hs));sizeItem(it,size,col.w);total+=it.node.height+(it===items[0]?0:it.gap*hs);}return total;};
   // Never larger than the master's own headline scaled by the larger side ratio.
   // Prefer the master's own line breaks: size the headline so its longest line fits the column,
   // unless that would make it far smaller than the format suggests — then let it wrap.
   let nominal=Math.min(b.font,m.head*Math.max(w/m.mw,h/m.mh)*1.15);
   if(m.headEm>0)nominal=Math.min(nominal,Math.max(col.w*.98/m.headEm,nominal*.72));
-  let hi=Math.max(floor,nominal*options.headlineScale),lo=floor,hs=hi;
-  if(apply(hi)>col.h){for(let i=0;i<14;i++){const mid=(lo+hi)/2;if(apply(mid)>col.h)hi=mid;else lo=mid;}hs=lo;}
-  const total=apply(hs);
+  const top=Math.max(floor,nominal*options.headlineScale);let hs=top;
+  const fit=()=>{let hi=top,lo=floor;hs=hi;if(apply(hi)>col.h){for(let i=0;i<14;i++){const mid=(lo+hi)/2;if(apply(mid)>col.h)hi=mid;else lo=mid;}hs=lo;}return apply(hs);};
+  let total=fit();
+  if(total>col.h+.5&&items.some(it=>it.role==='date'||it.role==='body')){relaxed=true;total=fit();}
   if(total>col.h+.5){if(options.enforceMinFont&&head)warnings.add(label+' · заголовок: не помещается при минимуме '+minimum+' px; размер сохранён, нужна ручная правка.');else if(!options.enforceMinFont)warnings.add(label+': текст не помещается в колонку, проверьте макет.');}
   let y=col.y+(b.align==='center'?(col.h-total)/2:b.align==='end'?col.h-total:0);y=Math.max(y,Math.min(col.y,0));
   // A stack taller than its column first takes the free space above it, so its last item — the button — stays in the banner.
@@ -675,8 +692,27 @@ function proportionalVariant(template:DesignNode,parent:FrameNode,w:number,h:num
 // is nearer to (or stays centred), so margins, alignment and gaps come from the master, not from a built-in scheme.
 // Everything scales by the tighter side; the background covers the format.
 const SOFT_LIMIT=.3; // |ln| of the change in proportions: up to about 1.35×
-type SoftUnit={node:DesignNode;box:Box;centred:boolean;span:boolean};
-type Soft={scene:FrameNode;block:{node:DesignNode;box:Box}|null;units:SoftUnit[];minText:number};
+type SoftUnit={node:DesignNode;box:Box;centred:boolean;span:boolean;role?:Role;font:number};
+// content — the box around all units; reserve — the master keeps wide spare margins around it (room for cropping).
+type Soft={scene:FrameNode;block:{node:DesignNode;box:Box}|null;units:SoftUnit[];minText:number;content:Box;reserve:boolean};
+// A master drawn with spare margins: all its text sits well inside, at least 14% of the shorter side from every edge.
+// The margins are picture reserve, not design, so formats are cut from the master around the content.
+const RESERVE=.14,SOFT_PAD=.07,SOFT_BG=1.6;
+function hasReserve(master:MasterNode){
+  const mb=master.absoluteBoundingBox,boxes=descendants(master,3000).filter(n=>n.type==='TEXT').map(n=>n.absoluteBoundingBox).filter((b):b is Rect=>!!b);if(!mb||!boxes.length)return false;
+  const t=RESERVE*Math.min(mb.width,mb.height);
+  return Math.min(...boxes.map(b=>b.x))-mb.x>=t&&Math.min(...boxes.map(b=>b.y))-mb.y>=t&&mb.x+mb.width-Math.max(...boxes.map(b=>b.x+b.width))>=t&&mb.y+mb.height-Math.max(...boxes.map(b=>b.y+b.height))>=t;
+}
+// The part of the master a format is built from, and the scales. Without reserve it is the whole master. With
+// reserve it is the content plus a normal margin (7% of the format's shorter side), so the content fills the format.
+// s — scale of the elements, bg — scale of the background (it must also cover the format).
+function softFrame(soft:Soft,master:MasterNode,w:number,h:number){
+  const mw=master.width,mh=master.height,C=soft.content;let V:Box={x:0,y:0,w:mw,h:mh};
+  if(soft.reserve&&C.w>0&&C.h>0){const p=SOFT_PAD*Math.min(w,h),s0=Math.min((w-2*p)/C.w,(h-2*p)/C.h),pad=p/s0;
+    const x0=Math.max(0,C.x-pad),y0=Math.max(0,C.y-pad);V={x:x0,y:y0,w:Math.min(mw,C.x+C.w+pad)-x0,h:Math.min(mh,C.y+C.h+pad)-y0};}
+  const s=Math.min(w/V.w,h/V.h);
+  return {V,s,bg:Math.max(s,w/mw,h/mh)};
+}
 function softParts(master:MasterNode,sources:Assets,isBackground:boolean){
   const visual=sources.visual,roleIds=new Set<string>();for(const k of ROLE_KEYS){const n=sources[k];if(n&&k!=='visual')roleIds.add(n.id);}
   const keys=new Set<string>(roleIds);if(visual)keys.add(visual.id);
@@ -717,12 +753,12 @@ async function prepareSoft(src:Source,sources:Assets,stage:FrameNode,warnings:Se
       if(c)n=c;else{n=copyOf(u);stage.appendChild(n);resetPosition(n);n.relativeTransform=relativeToMaster(u,master);}
     }
     n.name=role?ROLE_NAMES[role]:u.name;
-    const fm=fontMetrics(u).min;if(fm>0)minText=Math.min(minText,fm);
-    const box=rel(bb),texts=u.type==='TEXT'?[u]:'children'in u?descendants(u).filter((x):x is TextNode=>x.type==='TEXT'):[];
+    const fm=fontMetrics(u);if(fm.min>0)minText=Math.min(minText,fm.min);
+    const box=rel(bb);
     // A plain bar or plate that runs from edge to edge keeps running from edge to edge.
     const flat=u.type==='RECTANGLE'&&!imagePaint(u)&&Math.abs(u.rotation)<.01;
     const span=flat&&((box.x<=t&&box.x+box.w>=mb.width-t)||(box.y<=t&&box.y+box.h>=mb.height-t));
-    units.push({node:n,box,centred:texts.some(x=>x.textAlignHorizontal==='CENTER'),span});
+    units.push({node:n,box,centred:u.type==='TEXT'&&u.textAlignHorizontal==='CENTER',span,role,font:fm.max});
   }
   const remove=new Set(parts.fg.map(n=>n.id));if(parts.block)remove.add(parts.block.id);
   for(const x of descendants(master,3000))if(x.type==='TEXT')remove.add(x.id);
@@ -731,7 +767,9 @@ async function prepareSoft(src:Source,sources:Assets,stage:FrameNode,warnings:Se
   if(parts.block){const v=parts.block,r=visibleRect(v,master)||v.absoluteBoundingBox;let n:DesignNode|null=clippedCopy(v,master,stage);
     if(!n){n=copyOf(v);stage.appendChild(n);resetPosition(n);n.x=0;n.y=0;}
     if(r)block={node:n,box:rel(r)};}
-  return {scene,block,units,minText:Number.isFinite(minText)?minText:0};
+  const solid=units.filter(u=>!u.span),cx=Math.min(...solid.map(u=>u.box.x)),cy=Math.min(...solid.map(u=>u.box.y));
+  const content=solid.length?{x:cx,y:cy,w:Math.max(...solid.map(u=>u.box.x+u.box.w))-cx,h:Math.max(...solid.map(u=>u.box.y+u.box.h))-cy}:{x:0,y:0,w:mb.width,h:mb.height};
+  return {scene,block,units,minText:Number.isFinite(minText)?minText:0,content,reserve:!!src.reserve&&solid.length>0};
 }
 // New start of a block along one axis. lo/size — the block in the master, M — the master's length, T — the format's.
 // A block near an edge keeps its scaled margin to that edge; a block in the middle keeps its relative centre.
@@ -742,24 +780,29 @@ function softAnchor(lo:number,size:number,M:number,T:number,s:number,centred:boo
   return middle;
 }
 function softVariant(soft:Soft,parent:FrameNode,w:number,h:number,master:MasterNode,options:Options,warnings:Set<string>,geometry:{map:((u:number,v:number)=>{x:number;y:number})|null}){
-  const mw=master.width,mh=master.height,s=Math.min(w/mw,h/mh),label=w+'×'+h,full={x:0,y:0,w,h};
+  const mw=master.width,mh=master.height,{V,s,bg}=softFrame(soft,master,w,h),label=w+'×'+h;
   const frame=figma.createFrame();parent.appendChild(frame);frame.name=label+' · Адаптация мастера';frame.resize(w,h);frame.clipsContent=true;
   const color=rgb(options.background);frame.fills=[{type:'SOLID',color}];frame.exportSettings=[{format:'PNG',suffix:'',constraint:{type:'SCALE',value:1}}];
-  // Background: covers the format; the main object keeps its place in the banner.
-  if(options.isBackground){const sb=options.subject&&!options.focusOverride?options.subject:null;
-    geometry.map=visualInto(soft.scene,frame,full,sb?{x:sb.x*w,y:sb.y*h,w:sb.w*w,h:sb.h*h}:full,{...options,fit:'cover'},color).map;}
-  else visualInto(soft.scene,frame,full,full,{...options,isBackground:true,fit:'cover',subject:null,focusOverride:false,focusX:50,focusY:50,zoom:100,imageFit:'fill',fade:false},color).frame.name=BACKDROP;
-  // Picture block: the same share of the banner as in the master, cropped around the object.
-  if(soft.block){const b=soft.block.box,box={x:b.x/mw*w,y:b.y/mh*h,w:b.w/mw*w,h:b.h/mh*h};
+  // Background: one point of it — the centre of the main object, or of the content — keeps its place in the format.
+  // Where the format has the master's proportions this is an exact crop of the master.
+  {const crop=figma.createFrame();frame.appendChild(crop);crop.name='Изображение · кадрирование';crop.resize(w,h);crop.fills=[];crop.clipsContent=true;
+    const n=soft.scene.clone();crop.appendChild(n);n.rescale(bg);
+    const sb=options.isBackground&&options.subject&&!options.focusOverride?options.subject:null,C=soft.content;
+    const ax=sb?(sb.x+sb.w/2)*mw:C.x+C.w/2,ay=sb?(sb.y+sb.h/2)*mh:C.y+C.h/2;
+    const x=clamp((ax-V.x)/V.w*w-ax*bg,Math.min(0,w-mw*bg),0),y=clamp((ay-V.y)/V.h*h-ay*bg,Math.min(0,h-mh*bg),0);n.x=x;n.y=y;
+    if(options.isBackground)geometry.map=(u,v)=>({x:x+u*mw*bg,y:y+v*mh*bg});}
+  // Picture block: the same share of the format as in the master, cropped around the object.
+  if(soft.block){const b=soft.block.box,box={x:(b.x-V.x)/V.w*w,y:(b.y-V.y)/V.h*h,w:b.w/V.w*w,h:b.h/V.h*h};
     visualInto(soft.block.node,frame,box,box,{...options,isBackground:false,fade:false,imageFit:options.imageFit==='auto'?'fill':options.imageFit},color);}
-  // Units closer than the gap move together as one block.
-  const rigid=soft.units.filter(u=>!u.span),gap=Math.min(mw,mh)*.045,root=rigid.map((_,i)=>i);
+  // Units closer than the gap move together as one block. The gap follows the type size: lines of one text block
+  // stand closer than its largest font.
+  const rigid=soft.units.filter(u=>!u.span),base=soft.reserve?.06*Math.min(soft.content.w,soft.content.h):.045*Math.min(mw,mh),root=rigid.map((_,i)=>i);
   const find=(i:number):number=>root[i]===i?i:(root[i]=find(root[i]));
-  for(let i=0;i<rigid.length;i++)for(let j=i+1;j<rigid.length;j++){const a=rigid[i].box,b=rigid[j].box;
+  for(let i=0;i<rigid.length;i++)for(let j=i+1;j<rigid.length;j++){const a=rigid[i].box,b=rigid[j].box,gap=Math.max(base,rigid[i].font,rigid[j].font);
     if(Math.max(a.x,b.x)-Math.min(a.x+a.w,b.x+b.w)<=gap&&Math.max(a.y,b.y)-Math.min(a.y+a.h,b.y+b.h)<=gap)root[find(i)]=find(j);}
   // A block that fills most of the side the format gained is not kept rigid: it is divided at its widest inner gap,
   // so the top part stays at the top and the bottom part at the bottom instead of leaving one side empty.
-  const free=w/mw>h/mh*1.02?'x':h/mh>w/mw*1.02?'y':null,M=free==='x'?mw:mh;
+  const free=w/V.w>h/V.h*1.02?'x':h/V.h>w/V.w*1.02?'y':null,M=free==='x'?V.w:V.h;
   const lo=(u:SoftUnit)=>free==='x'?u.box.x:u.box.y,hi=(u:SoftUnit)=>free==='x'?u.box.x+u.box.w:u.box.y+u.box.h;
   const split=(mem:SoftUnit[]):SoftUnit[][]=>{
     if(!free||mem.length<2||Math.max(...mem.map(hi))-Math.min(...mem.map(lo))<=.6*M)return [mem];
@@ -770,19 +813,34 @@ function softVariant(soft:Soft,parent:FrameNode,w:number,h:number,master:MasterN
   for(let i=0;i<rigid.length;i++){if(find(i)!==i)continue;
     for(const mem of split(rigid.filter((_,j)=>find(j)===i))){
       const x0=Math.min(...mem.map(u=>u.box.x)),y0=Math.min(...mem.map(u=>u.box.y)),c={x:x0,y:y0,w:Math.max(...mem.map(u=>u.box.x+u.box.w))-x0,h:Math.max(...mem.map(u=>u.box.y+u.box.h))-y0};
-      const place={c,x:softAnchor(c.x,c.w,mw,w,s,mem.some(u=>u.centred)),y:softAnchor(c.y,c.h,mh,h,s,false)};for(const u of mem)blocks.set(u,place);}}
+      const place={c,x:softAnchor(c.x-V.x,c.w,V.w,w,s,mem.some(u=>u.centred)),y:softAnchor(c.y-V.y,c.h,V.h,h,s,false)};for(const u of mem)blocks.set(u,place);}}
   const t=Math.max(1,Math.min(mw,mh)*.015);
   for(const u of soft.units){ // in the master's layer order
     const n=u.node.clone();frame.appendChild(n);if(Math.abs(s-1)>1e-4)n.rescale(s);let x:number,y:number;
-    if(u.span){const b=u.box,sx=b.x<=t&&b.x+b.w>=mw-t,sy=b.y<=t&&b.y+b.h>=mh-t;
-      x=sx?b.x*s:softAnchor(b.x,b.w,mw,w,s,false);y=sy?b.y*s:softAnchor(b.y,b.h,mh,h,s,false);
-      if('resize'in n)n.resize(Math.max(.01,sx?w-(mw-b.w)*s:n.width),Math.max(.01,sy?h-(mh-b.h)*s:n.height));}
+    if(u.span){const b=u.box,sx=b.x<=t&&b.x+b.w>=mw-t,sy=b.y<=t&&b.y+b.h>=mh-t; // a bar from edge to edge of the master runs from edge to edge of the format
+      x=sx?Math.min(0,b.x*s):softAnchor(b.x-V.x,b.w,V.w,w,s,false);y=sy?Math.min(0,b.y*s):softAnchor(b.y-V.y,b.h,V.h,h,s,false);
+      if('resize'in n)n.resize(Math.max(.01,sx?w-2*x:n.width),Math.max(.01,sy?h-2*y:n.height));}
     else{const o=blocks.get(u)!;x=o.x+(u.box.x-o.c.x)*s;y=o.y+(u.box.y-o.c.y)*s;}
     const cur=relBox(n,frame);if(cur){n.x+=x-cur.x;n.y+=y-cur.y;}
   }
   if(options.isBackground&&geometry.map&&options.luma)for(const c of measureContrast(frame,options,geometry.map).filter(c=>c.ratio<3))warnings.add(label+': низкий контраст '+c.label+' с фоном ('+c.ratio.toFixed(1)+':1) — проверьте макет.');
   frame.setSharedPluginData(DATA_NS,'size',w+'x'+h);
   return frame;
+}
+// Small elements with text that have no role (an age mark, a badge) in a format built by the schemes: each goes to
+// the corner it has in the master, level with the logo when both are at the top, and moves on if the place is taken.
+function placeExtras(frame:FrameNode,soft:Soft,w:number,h:number,k:number,minFont:number,warnings:Set<string>,label:string){
+  const C=soft.content,taken:Box[]=[];for(const c of frame.children)if((Object.values(ROLE_NAMES) as string[]).includes(c.name)){const b=relBox(c,frame);if(b)taken.push(b);}
+  const logoN=frame.children.find(c=>c.name===ROLE_NAMES.logo),lb=logoN?relBox(logoN,frame):null,mg=Math.max(4,.05*Math.min(w,h));
+  for(const u of soft.units){if(u.role||u.span||!u.font||u.box.w*u.box.h>C.w*C.h*.08)continue;
+    const scale=Math.min(Math.max(k,Math.min(1,minFont/u.font)),.3*w/u.box.w,.5*h/u.box.h),ew=u.box.w*scale,eh=u.box.h*scale;
+    const right=u.box.x+u.box.w/2>C.x+C.w/2,top=u.box.y+u.box.h/2<C.y+C.h/2;
+    const spot=(r:boolean,tp:boolean):Box=>{const level=tp&&lb&&lb.y+lb.h/2<h*.45,mx=level?Math.max(mg,Math.min(lb!.x,w-lb!.x-lb!.w)):Math.max(mg,.03*w);
+      return {x:r?w-mx-ew:mx,y:level?lb!.y+lb!.h/2-eh/2:tp?mg:h-mg-eh,w:ew,h:eh};};
+    const place=[spot(right,top),spot(!right,top),spot(right,!top),spot(!right,!top)].find(b=>!taken.some(o=>overlap(o,b)>0));
+    if(!place){warnings.add(label+': элемент «'+u.node.name.slice(0,30)+'» не поместился и не перенесён.');continue;}
+    const n=u.node.clone();frame.appendChild(n);n.rescale(scale);const cur=relBox(n,frame);if(cur){n.x+=place.x-cur.x;n.y+=place.y-cur.y;}taken.push(place);
+  }
 }
 function validSubject(s:unknown):Rect01|null{
   if(!record(s))return null;const v=['x','y','w','h'].map(k=>Number(s[k]));if(v.some(n=>!Number.isFinite(n)))return null;
@@ -823,7 +881,7 @@ function normalizeOptions(input:Options):Options{
   const options:Options={enforceMinFont:input.enforceMinFont!==false,variantOverrides:validateOverrides(input.variantOverrides),preserveMaster:input.preserveMaster!==false,visualMode:['background','block'].includes(input.visualMode||'')?input.visualMode:'auto',background:input.background,fit:input.fit==='contain'?'contain':'cover',focusX:clamp(Number(input.focusX)||0,0,100),focusY:clamp(Number(input.focusY)||0,0,100),zoom:clamp(Number(input.zoom)||100,100,500),minFont:clamp(Number(input.minFont)||12,6,48),headlineScale:1,visualSide:['left','auto'].includes(input.visualSide)?input.visualSide:'right',fade:!!input.fade,trimLogo:!!input.trimLogo,outlineMissing:!!input.outlineMissing,aiPlan:String(input.aiPlan||''),subject:validSubject(input.subject),luma:validLuma(input.luma),scrim:input.scrim!==false,shade:hexOrUndef(input.shade),edge:hexOrUndef(input.edge)||null,extend:input.extend!==false,alternates:validAlternates(input.alternates),platforms:Array.isArray(input.platforms)?PLATFORMS.map(p=>p.id).filter(id=>input.platforms!.includes(id)):[],campaign:cleanCampaign(input.campaign),placement:['fixed','master'].includes(input.placement||'')?input.placement:'auto',textPos:['top','bottom','left','right'].includes(input.textPos||'')?input.textPos:'auto',busy:validLuma(input.busy),fillColor:input.fillColor==='custom'?'custom':'edge',imageFit:FITS.includes(input.imageFit||'')?input.imageFit:input.imageFit===undefined&&input.extend===false?'fill':'auto',useAi:!!input.useAi,aiScene:validAiScene(input.aiScene),subjectManual:!!input.subjectManual&&!!validSubject(input.subject)};rgb(options.background);return options;
 }
 // One prepared source per master: roles, prepared assets, metrics and the exact-copy template.
-type Source={soft?:Soft|null;logoOverText?:boolean;master:MasterNode;roles:Record<Role,string>;options:Options;sources:Assets;assets:Assets;metrics:Metrics|null;template:DesignNode|null;ready:boolean;primary:boolean};
+type Source={reserve?:boolean;soft?:Soft|null;logoOverText?:boolean;master:MasterNode;roles:Record<Role,string>;options:Options;sources:Assets;assets:Assets;metrics:Metrics|null;template:DesignNode|null;ready:boolean;primary:boolean};
 function aspectDistance(m:MasterNode,w:number,h:number){return Math.abs(Math.log((w/h)/(m.width/m.height)));}
 // The master whose proportions are closest to the format; ties go to the primary master.
 function pickSource(list:Source[],w:number,h:number){let best=list[0];for(const s of list)if(aspectDistance(s.master,w,h)<aspectDistance(best.master,w,h)-1e-9)best=s;return best;}
@@ -855,6 +913,8 @@ async function prepareSource(src:Source,stage:FrameNode,warnings:Set<string>,nee
   if(!needAdapt||src.ready)return;
   const sources:Assets={},roles=src.roles,where=src.primary?'':' (мастер «'+master.name+'»)';
   for(const key of ROLE_KEYS){if(!roles[key])continue;const n=await figma.getNodeByIdAsync(roles[key]);if(!n||!isDesign(n)||!isInside(n,master)||n.id===master.id)throw new Error(ROLE_NAMES[key]+': выберите слой внутри текущего мастера'+where+'.');sources[key]=n;}
+  // Roles saved before 1.9 may hold only the logo mark: the whole lockup is taken when no other role is inside it.
+  if(sources.logo){const up=logoLockup(sources.logo,master);if(up&&!ROLE_KEYS.some(k=>k!=='logo'&&sources[k]&&(isInside(sources[k]!,up)||isInside(up,sources[k]!))))sources.logo=up;}
   options.isBackground=!!sources.visual&&backgroundMode(sources.visual,master,options.visualMode,options.imageFit);
   // A large picture taken as a separate block is usually a background the detection missed (e.g. partly transparent edges).
   {const v=sources.visual?.absoluteBoundingBox,mb=master.absoluteBoundingBox;if(v&&mb&&!options.isBackground&&options.visualMode!=='block'){const ix=Math.max(0,Math.min(v.x+v.width,mb.x+mb.width)-Math.max(v.x,mb.x)),iy=Math.max(0,Math.min(v.y+v.height,mb.y+mb.height)-Math.max(v.y,mb.y));
@@ -881,11 +941,12 @@ async function prepareSource(src:Source,stage:FrameNode,warnings:Set<string>,nee
 async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unknown,input:Options,progress:(done:number,total:number)=>void|Promise<void>=()=>{},isCancelled:()=>boolean=()=>false){
   const sizes=validateSizes(rawSizes),options=normalizeOptions(input),ai=validatePlan(options.aiPlan,sizes),warnings=new Set<string>();
   const list:Source[]=[{master,roles,options,sources:{},assets:{},metrics:null,template:null,ready:false,primary:true},...await alternateSources(master,options,warnings)];
-  const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});const exact=!!vo.preserveMaster&&sameAspect(src.master,w,h);return {w,h,src,exact,soft:!!vo.preserveMaster&&!exact&&aspectDistance(src.master,w,h)<=SOFT_LIMIT,vo};});
+  for(const src of list)src.reserve=hasReserve(src.master);
+  const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});const exact=!!vo.preserveMaster&&!src.reserve&&sameAspect(src.master,w,h);return {w,h,src,exact,soft:!!vo.preserveMaster&&!exact&&(!!src.reserve||aspectDistance(src.master,w,h)<=SOFT_LIMIT),vo};});
   const stage=figma.createFrame();figma.currentPage.appendChild(stage);stage.name='Banner Adapt · подготовка';stage.fills=[];stage.visible=false;stage.x=figma.viewport.center.x;stage.y=figma.viewport.center.y;
   let output:FrameNode|null=null,completed=0;const results:{id:string;w:number;h:number;name:string;status:Status;issues:Issue[]}[]=[];
   try{
-    for(const src of list){const mine=plan.filter(p=>p.src===src);if(mine.length)await prepareSource(src,stage,warnings,mine.some(p=>!p.exact),mine.some(p=>p.exact),mine.some(p=>p.soft));}
+    for(const src of list){const mine=plan.filter(p=>p.src===src);if(mine.length)await prepareSource(src,stage,warnings,mine.some(p=>!p.exact),mine.some(p=>p.exact),mine.some(p=>!p.exact));}
     if(isCancelled())throw new Error('Создание отменено.');
     if(options.useAi)for(const src of list)if(!src.options.aiScene&&plan.some(p=>p.src===src&&!p.exact))warnings.add('AI-кадрирование: для мастера «'+src.master.name+'» нет ответа AI — использован локальный анализ.');
     output=figma.createFrame();figma.currentPage.appendChild(output);output.name='Banner Adapt · '+master.name;output.fills=[];output.clipsContent=false;
@@ -900,13 +961,18 @@ async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unk
       // Each format is isolated: an error removes only its own partial layers and leaves a Failed placeholder.
       const before=output.children.length,label=w+'×'+h,mine=new Set<string>();let v:FrameNode,issues:Issue[];
       // Soft adaptation only where the master's smallest text stays readable; smaller formats are re-laid by the schemes.
-      const k=Math.min(w/src.master.width,h/src.master.height),sf=soft&&src.soft&&(!src.soft.minText||src.soft.minText*k>=options.minFont-.01)?src.soft:null;let kept=false;
+      // The background must not outgrow the elements too far either: then the picture no longer matches the text.
+      const sc=soft&&src.soft?softFrame(src.soft,src.master,w,h):null,sf=sc&&src.soft&&(!src.soft.minText||src.soft.minText*sc.s>=options.minFont-.01)&&sc.bg<=sc.s*SOFT_BG?src.soft:null;let kept=false;
       try{
         const geo={map:null as ((u:number,v:number)=>{x:number;y:number})|null};
         let made:FrameNode|null=exact&&src.template?proportionalVariant(src.template,output,w,h,src.master,mine,options.minFont):null;
         if(!made&&sf)try{made=softVariant(sf,output,w,h,src.master,opts,mine,geo);kept=true;}
           catch(err){for(const n of output.children.slice(before))n.remove();mine.clear();geo.map=null;mine.add(label+': адаптация мастера не удалась ('+messageText(err)+') — формат собран по схеме.');}
-        v=made||createVariant(src.assets,output,w,h,opts,src.metrics!,mine,geo);
+        if(!made){made=createVariant(src.assets,output,w,h,opts,src.metrics!,mine,geo);
+          // Elements without a role still travel: scaled like the headline of this format.
+          if(src.soft&&src.metrics){const head=made.children.find(c=>c.name===ROLE_NAMES.headline),hm=head&&head.type==='TEXT'?fontMetrics(head).max:0;
+            try{placeExtras(made,src.soft,w,h,hm?hm/src.metrics.head:Math.min(w/src.master.width,h/src.master.height),options.minFont,mine,label);}catch(err){mine.add(label+': элементы без роли не перенесены ('+messageText(err)+').');}}}
+        v=made;
         if(!src.primary)v.name+=' · из «'+src.master.name+'»';
         if(ai&&!exact)v.setSharedPluginData(DATA_NS,'aiFraming',ai.core?'core':'whole');
         platformChecks(v,w,h,options.platforms,mine);
