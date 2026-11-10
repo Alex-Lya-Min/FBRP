@@ -356,7 +356,7 @@ function analyze(master) {
     const cta = named || (ctaText && buttonContainer(ctaText, master));
     const namedLogo = nodes.find(n => /logo|логотип/i.test(n.name) && n.width * n.height <= area * .35 && n !== cta);
     const freeTexts = texts.filter(n => (!cta || !isInside(n, cta)) && (!namedLogo || !isInside(n, namedLogo)));
-    const date = freeTexts.find(n => DATE.test(n.characters));
+    let date = freeTexts.find(n => DATE.test(n.characters));
     const headline = freeTexts.filter(n => n !== date).sort((a, b) => { const sz = (n) => typeof n.fontSize === 'number' ? n.fontSize : 20; return sz(b) - sz(a) || b.width * b.height - a.width * a.height; })[0];
     const images = nodes.filter(imagePaint).sort((a, b) => b.width * b.height - a.width * a.height);
     let visual = nodes.find(n => /^(hero|visual|key visual|имидж|иллюстрация)/i.test(n.name));
@@ -381,6 +381,12 @@ function analyze(master) {
     const lockup = logo;
     // Additional text: the longest of the remaining texts. Short marks (18+, a two-letter tag) are not body text.
     const body = freeTexts.filter(n => n !== headline && n !== date && !(lockup && isInside(n, lockup)) && n.characters.trim().length >= 4).sort((a, b) => b.characters.length - a.characters.length)[0];
+    // No date in the master: a subheading (a line at least half the headline's size) takes the «date / caption» slot,
+    // so it stays in the text block instead of travelling as a corner mark.
+    if (!date && headline) {
+        const h = fontOf(headline);
+        date = freeTexts.filter(n => n !== headline && n !== body && !(lockup && isInside(n, lockup)) && n.characters.trim().length >= 6 && fontOf(n) >= h * .5).sort((a, b) => fontOf(b) - fontOf(a))[0];
+    }
     const roles = { logo: '', headline: '', date: '', body: '', cta: '', visual: '' };
     for (const k of ROLE_KEYS) {
         const n = ({ logo, headline, date, body, cta, visual })[k];
@@ -559,6 +565,30 @@ async function loadNodeFonts(node) {
     }
     return missing;
 }
+// Figma's rescale leaves a fixed-size auto-layout frame too tall or too wide (a 544×80 button scaled by 0.375 came
+// out 204×55). Such frames get their scaled size back, inner frames first.
+function rescaleSafe(n, k) {
+    if (Math.abs(k - 1) < 1e-6)
+        return;
+    const frames = [];
+    const collect = (x) => { if (frames.length > 300)
+        return; if ('layoutMode' in x && x.layoutMode !== 'NONE')
+        frames.push({ n: x, w: x.width, h: x.height }); if ('children' in x)
+        for (const c of x.children)
+            collect(c); };
+    collect(n);
+    n.rescale(k);
+    for (const f of frames.reverse()) {
+        if (f.n.removed)
+            continue;
+        const w = f.w * k, h = f.h * k;
+        if (Math.abs(f.n.width - w) > .5 || Math.abs(f.n.height - h) > .5)
+            try {
+                f.n.resize(Math.max(.01, w), Math.max(.01, h));
+            }
+            catch (_e) { }
+    }
+}
 function resetPosition(n) { n.locked = false; if ('layoutPositioning' in n)
     n.layoutPositioning = 'AUTO'; if ('constraints' in n)
     n.constraints = { horizontal: 'MIN', vertical: 'MIN' }; }
@@ -648,7 +678,7 @@ function contain(asset, parent, box, align = 'left', maxScale = Infinity) {
     resetPosition(n);
     n.name = ROLE_NAMES.logo;
     const s = Math.min(box.w / n.width, box.h / n.height, maxScale);
-    n.rescale(s);
+    rescaleSafe(n, s);
     n.x = box.x + (align === 'center' ? (box.w - n.width) / 2 : 0);
     n.y = box.y + (box.h - n.height) / 2;
     return n;
@@ -804,7 +834,7 @@ function visualInto(asset, parent, box, target, options, color) {
     // the rest is filled with that colour, so the whole object fits narrow formats instead of being cut.
     const edge = extendOn(options) ? rgb(edgeHex(options)) : null;
     const g = visualGeometry(n.width, n.height, box, target, options);
-    n.rescale(g.scale);
+    rescaleSafe(n, g.scale);
     n.x = g.x;
     n.y = g.y;
     const p = g;
@@ -941,7 +971,7 @@ function chooseLayout(cands, asset, options, m, w, h) {
 function sizeItem(it, size, width) {
     const n = it.node, k = size / it.base;
     if (Math.abs(k - 1) > 1e-4) {
-        n.rescale(k);
+        rescaleSafe(n, k);
         it.base = size;
     }
     if (n.type === 'TEXT') {
@@ -953,7 +983,7 @@ function sizeItem(it, size, width) {
     }
     else if (n.width > width + .5) {
         const f = width / n.width;
-        n.rescale(f);
+        rescaleSafe(n, f);
         it.base *= f;
     }
 }
@@ -1064,7 +1094,7 @@ function buttonInto(asset, parent, box, target, m) {
     resetPosition(n);
     n.name = ROLE_NAMES.cta;
     const k = Math.min(target / n.height, box.w / n.width, box.h / n.height);
-    n.rescale(k);
+    rescaleSafe(n, k);
     n.x = box.x + box.w - n.width;
     n.y = box.y + (box.h - n.height) / 2;
     return n;
@@ -1202,7 +1232,7 @@ function createVariant(assets, parent, w, h, options, m, warnings, geometry) {
         const n = assets.backdrop.clone();
         frame.appendChild(n);
         n.name = BACKDROP;
-        n.rescale(Math.max(w / n.width, h / n.height));
+        rescaleSafe(n, Math.max(w / n.width, h / n.height));
         n.x = (w - n.width) / 2;
         n.y = (h - n.height) / 2;
         n.locked = true;
@@ -1399,7 +1429,7 @@ function proportionalVariant(template, parent, w, h, master, warnings, minFont) 
     const copy = template.clone();
     frame.appendChild(copy);
     resetPosition(copy);
-    copy.rescale(w / master.width);
+    rescaleSafe(copy, w / master.width);
     copy.x = 0;
     copy.y = 0;
     frame.setSharedPluginData(DATA_NS, 'size', w + 'x' + h);
@@ -1600,7 +1630,7 @@ function softVariant(soft, parent, w, h, master, options, warnings, geometry) {
         crop.clipsContent = true;
         const n = soft.scene.clone();
         crop.appendChild(n);
-        n.rescale(bg);
+        rescaleSafe(n, bg);
         const sb = options.isBackground && options.subject && !options.focusOverride && !options.subjectGuessed ? options.subject : null, C = soft.content;
         const ax = sb ? (sb.x + sb.w / 2) * mw : C.x + C.w / 2, ay = sb ? (sb.y + sb.h / 2) * mh : C.y + C.h / 2;
         // When the background is larger than the elements, the object is nudged back inside the format if it fits there.
@@ -1662,12 +1692,25 @@ function softVariant(soft, parent, w, h, master, options, warnings, geometry) {
                 blocks.set(u, place);
         }
     }
+    {
+        const rules = platformRules(options.platforms, w, h);
+        if (rules.safeTop || rules.safeBottom) {
+            const places = [...new Set(blocks.values())], top = rules.safeTop * h * 1.02, bottom = h - rules.safeBottom * h * 1.02, box = (p) => ({ x: p.x, y: p.y, w: p.c.w * s, h: p.c.h * s });
+            for (const p of places) {
+                const b = box(p), ny = rules.safeTop && b.y < top ? top : rules.safeBottom && b.y + b.h > bottom ? bottom - b.h : b.y;
+                if (ny === b.y)
+                    continue;
+                const moved = Object.assign(Object.assign({}, b), { y: ny });
+                if (!places.some(o => o !== p && overlap(box(o), moved) > 0 && overlap(box(o), b) === 0))
+                    p.y = ny;
+            }
+        }
+    }
     const t = Math.max(1, Math.min(mw, mh) * .015);
     for (const u of soft.units) { // in the master's layer order
         const n = u.node.clone();
         frame.appendChild(n);
-        if (Math.abs(s - 1) > 1e-4)
-            n.rescale(s);
+        rescaleSafe(n, s);
         let x, y;
         if (u.span) {
             const b = u.box, sx = b.x <= t && b.x + b.w >= mw - t, sy = b.y <= t && b.y + b.h >= mh - t; // a bar from edge to edge of the master runs from edge to edge of the format
@@ -1743,7 +1786,7 @@ function placeExtras(frame, soft, w, h, k, minFont, warnings, label, map, luma) 
         }
         const n = u.node.clone();
         frame.appendChild(n);
-        n.rescale(scale);
+        rescaleSafe(n, scale);
         const cur = relBox(n, frame);
         if (cur) {
             n.x += place.x - cur.x;
@@ -1962,11 +2005,12 @@ async function prepareSource(src, stage, warnings, needAdapt, needExact, needSof
 async function generate(master, roles, rawSizes, input, progress = () => { }, isCancelled = () => false) {
     const sizes = validateSizes(rawSizes), options = normalizeOptions(input), ai = validatePlan(options.aiPlan, sizes), warnings = new Set();
     const list = [{ master, roles, options, sources: {}, assets: {}, metrics: null, template: null, ready: false, primary: true }, ...await alternateSources(master, options, warnings)];
-    // An object frame drawn over (almost) the whole picture marks no object: fitting it would only shrink the picture.
+    // An object frame over (almost) the whole picture, or across its whole width or height, marks no object:
+    // fitting it would only shrink the picture, and any narrower format would report it as cut.
     for (const src of list) {
         src.reserve = hasReserve(src.master);
         const sj = src.options.subject;
-        if (sj && sj.w * sj.h >= .65)
+        if (sj && (sj.w * sj.h >= .65 || sj.w >= .92 || sj.h >= .92))
             src.options.subject = null;
     }
     const plan = sizes.map(([w, h]) => { const src = pickSource(list, w, h), vo = variantOptions(src.options, w + 'x' + h, src.primary ? ai : {}); const exact = !!vo.preserveMaster && !src.reserve && sameAspect(src.master, w, h); return { w, h, src, exact, soft: !!vo.preserveMaster && !exact && (!!src.reserve || aspectDistance(src.master, w, h) <= SOFT_LIMIT), vo }; });
@@ -2059,7 +2103,7 @@ async function generate(master, roles, rawSizes, input, progress = () => { }, is
                 }
                 v = made;
                 if (!src.primary)
-                    v.name += ' · из «' + src.master.name + '»';
+                    v.name += ' · из «' + src.master.name.replace(/ · [⚠✕].*$/, '').slice(0, 32) + '»';
                 if (ai && !exact)
                     v.setSharedPluginData(DATA_NS, 'aiFraming', ai.core ? 'core' : 'whole');
                 platformChecks(v, w, h, options.platforms, mine);

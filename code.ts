@@ -1,4 +1,4 @@
-// Banner Adapt 1.12 — local layout engine. Optional AI framing: one small request per master with the user's own key,
+// Banner Adapt 1.13 — local layout engine. Optional AI framing: one small request per master with the user's own key,
 // the answer is the scene geometry only; every format is still computed locally.
 // Author: Алексей Лямин (Alex Lyamin) · https://alexlyamin.framer.website/ru-home
 type Role = 'logo'|'headline'|'date'|'body'|'cta'|'visual';
@@ -242,7 +242,7 @@ function analyze(master:MasterNode){
   const cta=named||(ctaText&&buttonContainer(ctaText,master));
   const namedLogo=nodes.find(n=>/logo|логотип/i.test(n.name)&&n.width*n.height<=area*.35&&n!==cta);
   const freeTexts=texts.filter(n=>(!cta||!isInside(n,cta))&&(!namedLogo||!isInside(n,namedLogo)));
-  const date=freeTexts.find(n=>DATE.test(n.characters));
+  let date=freeTexts.find(n=>DATE.test(n.characters));
   const headline=freeTexts.filter(n=>n!==date).sort((a,b)=>{const sz=(n:TextNode)=>typeof n.fontSize==='number'?n.fontSize:20;return sz(b)-sz(a)||b.width*b.height-a.width*a.height;})[0];
   const images=nodes.filter(imagePaint).sort((a,b)=>b.width*b.height-a.width*a.height);
   let visual=nodes.find(n=>/^(hero|visual|key visual|имидж|иллюстрация)/i.test(n.name));
@@ -257,6 +257,9 @@ function analyze(master:MasterNode){
   const lockup=logo;
   // Additional text: the longest of the remaining texts. Short marks (18+, a two-letter tag) are not body text.
   const body=freeTexts.filter(n=>n!==headline&&n!==date&&!(lockup&&isInside(n,lockup))&&n.characters.trim().length>=4).sort((a,b)=>b.characters.length-a.characters.length)[0];
+  // No date in the master: a subheading (a line at least half the headline's size) takes the «date / caption» slot,
+  // so it stays in the text block instead of travelling as a corner mark.
+  if(!date&&headline){const h=fontOf(headline);date=freeTexts.filter(n=>n!==headline&&n!==body&&!(lockup&&isInside(n,lockup))&&n.characters.trim().length>=6&&fontOf(n)>=h*.5).sort((a,b)=>fontOf(b)-fontOf(a))[0];}
   const roles:Record<Role,string>={logo:'',headline:'',date:'',body:'',cta:'',visual:''};for(const k of ROLE_KEYS){const n=({logo,headline,date,body,cta,visual})[k];roles[k]=n?n.id:'';}
   let bg={r:.0314,g:.0706,b:.149};
   const large=[master,...nodes.filter(n=>n.width*n.height>=master.width*master.height*.35)];
@@ -316,6 +319,15 @@ async function loadNodeFonts(node:DesignNode){
   const faces=new Map<string,FontName>();for(const t of texts){if(!t.characters.length){if(t.fontName!==figma.mixed)faces.set(JSON.stringify(t.fontName),t.fontName);}else for(const f of t.getRangeAllFontNames(0,t.characters.length))faces.set(JSON.stringify(f),f);}
   const missing=[];for(const f of faces.values()){try{await figma.loadFontAsync(f);}catch(_e){missing.push(f.family+' '+f.style);}}return missing;
 }
+// Figma's rescale leaves a fixed-size auto-layout frame too tall or too wide (a 544×80 button scaled by 0.375 came
+// out 204×55). Such frames get their scaled size back, inner frames first.
+function rescaleSafe(n:DesignNode,k:number){
+  if(Math.abs(k-1)<1e-6)return;
+  const frames:{n:FrameNode;w:number;h:number}[]=[];
+  const collect=(x:SceneNode)=>{if(frames.length>300)return;if('layoutMode'in x&&x.layoutMode!=='NONE')frames.push({n:x as FrameNode,w:x.width,h:x.height});if('children'in x)for(const c of x.children)collect(c);};
+  collect(n);n.rescale(k);
+  for(const f of frames.reverse()){if(f.n.removed)continue;const w=f.w*k,h=f.h*k;if(Math.abs(f.n.width-w)>.5||Math.abs(f.n.height-h)>.5)try{f.n.resize(Math.max(.01,w),Math.max(.01,h));}catch(_e){}}
+}
 function resetPosition(n:DesignNode){n.locked=false;if('layoutPositioning'in n)n.layoutPositioning='AUTO';if('constraints'in n)n.constraints={horizontal:'MIN',vertical:'MIN'};}
 function inkLeaves(node:DesignNode){
   return (node.type==='VECTOR'?[node]:descendants(node)).filter(n=>['VECTOR','BOOLEAN_OPERATION','TEXT','RECTANGLE','ELLIPSE'].includes(n.type)&&paintVisible(n)&&n.opacity>.1&&(!('effects'in n)||!n.effects.some(e=>e.visible!==false&&e.type==='LAYER_BLUR'))&&!imagePaint(n)).filter((n,i,all)=>!all.some((p,j)=>i!==j&&isInside(n,p)));
@@ -340,7 +352,7 @@ async function prepareAsset(source:DesignNode,role:Role,stage:FrameNode,options:
   const n=copyOf(source);stage.appendChild(n);resetPosition(n);n.name=ROLE_NAMES[role];n.x=0;n.y=0;return n;
 }
 function contain(asset:DesignNode,parent:FrameNode,box:Box,align='left',maxScale=Infinity):DesignNode{
-  const n=asset.clone();parent.appendChild(n);resetPosition(n);n.name=ROLE_NAMES.logo;const s=Math.min(box.w/n.width,box.h/n.height,maxScale);n.rescale(s);n.x=box.x+(align==='center'?(box.w-n.width)/2:0);n.y=box.y+(box.h-n.height)/2;return n;
+  const n=asset.clone();parent.appendChild(n);resetPosition(n);n.name=ROLE_NAMES.logo;const s=Math.min(box.w/n.width,box.h/n.height,maxScale);rescaleSafe(n,s);n.x=box.x+(align==='center'?(box.w-n.width)/2:0);n.y=box.y+(box.h-n.height)/2;return n;
 }
 // Nominal type size of a role asset: live text reports its own sizes, outlined text keeps the sizes measured before outlining.
 function sizeOf(n:DesignNode):number{
@@ -426,7 +438,7 @@ function visualInto(asset:DesignNode,parent:FrameNode,box:Box,target:Box,options
   // A picture whose edges are one flat colour (object shot on a plain backdrop) can be smaller than its frame:
   // the rest is filled with that colour, so the whole object fits narrow formats instead of being cut.
   const edge=extendOn(options)?rgb(edgeHex(options)):null;
-  const g=visualGeometry(n.width,n.height,box,target,options);n.rescale(g.scale);n.x=g.x;n.y=g.y;const p=g;
+  const g=visualGeometry(n.width,n.height,box,target,options);rescaleSafe(n,g.scale);n.x=g.x;n.y=g.y;const p=g;
   if(edge){frame.fills=[{type:'SOLID',color:edge}];edgeFades(frame,p.x,p.y,n.width,n.height,edge);}
   else if(options.fade&&!options.isBackground)addFade(frame,box.w,box.h,color);
   return {frame,map:(u:number,v:number)=>({x:box.x+p.x+u*n.width,y:box.y+p.y+v*n.height})};
@@ -487,9 +499,9 @@ function chooseLayout(cands:Layout[],asset:DesignNode|undefined,options:Options,
 type StackItem={role:Role;node:DesignNode;ratio:number;base:number;gap:number;min:number};
 // Scale one stack item to a target type size (px). Live text wraps to the column; vectors and buttons scale as a whole.
 function sizeItem(it:StackItem,size:number,width:number){
-  const n=it.node,k=size/it.base;if(Math.abs(k-1)>1e-4){n.rescale(k);it.base=size;}
+  const n=it.node,k=size/it.base;if(Math.abs(k-1)>1e-4){rescaleSafe(n,k);it.base=size;}
   if(n.type==='TEXT'){n.textAutoResize='WIDTH_AND_HEIGHT';if(n.width>width){n.textAutoResize='HEIGHT';n.resize(Math.max(1,width),n.height);}}
-  else if(n.width>width+.5){const f=width/n.width;n.rescale(f);it.base*=f;}
+  else if(n.width>width+.5){const f=width/n.width;rescaleSafe(n,f);it.base*=f;}
 }
 function textStack(assets:Assets,frame:FrameNode,b:Layout,m:Metrics,options:Options,warnings:Set<string>,label:string,w:number,h:number){
   const col=b.text,items:StackItem[]=[];
@@ -529,7 +541,7 @@ function textStack(assets:Assets,frame:FrameNode,b:Layout,m:Metrics,options:Opti
 // Button outside the text column (strips): master proportions, sized from the headline and limited by its box.
 function buttonInto(asset:DesignNode,parent:FrameNode,box:Box,target:number,m:Metrics):DesignNode{
   const n=asset.clone();parent.appendChild(n);resetPosition(n);n.name=ROLE_NAMES.cta;
-  const k=Math.min(target/n.height,box.w/n.width,box.h/n.height);n.rescale(k);
+  const k=Math.min(target/n.height,box.w/n.width,box.h/n.height);rescaleSafe(n,k);
   n.x=box.x+box.w-n.width;n.y=box.y+(box.h-n.height)/2;return n;
 }
 function luminance(c:RGB){const f=(v:number)=>v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);return .2126*f(c.r)+.7152*f(c.g)+.0722*f(c.b);}
@@ -591,7 +603,7 @@ function createVariant(assets:Assets,parent:FrameNode,w:number,h:number,options:
   if(!assets.logo)for(let i=0;i<cands.length;i++)cands[i]=withoutLogoSlot(cands[i],w,h);
   const b=chooseLayout(cands,assets.visual,options,m,w,h), frame=figma.createFrame();parent.appendChild(frame);frame.name=w+'×'+h+' · '+b.kind+(b.variant?' · '+b.variant:'');frame.resize(w,h);frame.clipsContent=true;const color=extendOn(options)&&assets.visual?rgb(edgeHex(options)):rgb(options.background);frame.fills=[{type:'SOLID',color}];frame.exportSettings=[{format:'PNG',suffix:'',constraint:{type:'SCALE',value:1}}];
   const label=w+'×'+h;let map:((u:number,v:number)=>{x:number;y:number})|null=null;
-  if(assets.backdrop){const n=assets.backdrop.clone();frame.appendChild(n);n.name=BACKDROP;n.rescale(Math.max(w/n.width,h/n.height));n.x=(w-n.width)/2;n.y=(h-n.height)/2;n.locked=true;}
+  if(assets.backdrop){const n=assets.backdrop.clone();frame.appendChild(n);n.name=BACKDROP;rescaleSafe(n,Math.max(w/n.width,h/n.height));n.x=(w-n.width)/2;n.y=(h-n.height)/2;n.locked=true;}
   if(assets.visual){const v=visualInto(assets.visual,frame,options.isBackground?{x:0,y:0,w,h}:b.visual,b.visual,options.isBackground?{...options,fit:'cover'}:options,color);if(options.isBackground)map=v.map;}
   if(geometry)geometry.map=map;
   const hs=textStack(assets,frame,b,m,options,warnings,label,w,h);
@@ -688,7 +700,7 @@ async function prepareMaster(master:MasterNode,stage:FrameNode,options:Options,w
 }
 function proportionalVariant(template:DesignNode,parent:FrameNode,w:number,h:number,master:MasterNode,warnings:Set<string>,minFont:number){
   const frame=figma.createFrame();parent.appendChild(frame);frame.name=w+'×'+h+' · Как в мастере';frame.resize(w,h);frame.fills=[];frame.clipsContent=true;frame.exportSettings=[{format:'PNG',suffix:'',constraint:{type:'SCALE',value:1}}];
-  const copy=template.clone();frame.appendChild(copy);resetPosition(copy);copy.rescale(w/master.width);copy.x=0;copy.y=0;
+  const copy=template.clone();frame.appendChild(copy);resetPosition(copy);rescaleSafe(copy,w/master.width);copy.x=0;copy.y=0;
   frame.setSharedPluginData(DATA_NS,'size',w+'x'+h);
   for(const n of allDesignNodes(copy))if(n.type==='TEXT'&&n.visible&&typeof n.fontSize==='number'&&n.fontSize<minFont)warnings.add(w+'×'+h+' · «'+n.name+'»: шрифт '+n.fontSize.toFixed(1)+' px.');
   return frame;
@@ -795,7 +807,7 @@ function softVariant(soft:Soft,parent:FrameNode,w:number,h:number,master:MasterN
   // Background: one point of it — the centre of the main object, or of the content — keeps its place in the format.
   // Where the format has the master's proportions this is an exact crop of the master.
   {const crop=figma.createFrame();frame.appendChild(crop);crop.name='Изображение · кадрирование';crop.resize(w,h);crop.fills=[];crop.clipsContent=true;
-    const n=soft.scene.clone();crop.appendChild(n);n.rescale(bg);
+    const n=soft.scene.clone();crop.appendChild(n);rescaleSafe(n,bg);
     const sb=options.isBackground&&options.subject&&!options.focusOverride&&!options.subjectGuessed?options.subject:null,C=soft.content;
     const ax=sb?(sb.x+sb.w/2)*mw:C.x+C.w/2,ay=sb?(sb.y+sb.h/2)*mh:C.y+C.h/2;
     // When the background is larger than the elements, the object is nudged back inside the format if it fits there.
@@ -826,9 +838,13 @@ function softVariant(soft:Soft,parent:FrameNode,w:number,h:number,master:MasterN
     for(const mem of split(rigid.filter((_,j)=>find(j)===i))){
       const x0=Math.min(...mem.map(u=>u.box.x)),y0=Math.min(...mem.map(u=>u.box.y)),c={x:x0,y:y0,w:Math.max(...mem.map(u=>u.box.x+u.box.w))-x0,h:Math.max(...mem.map(u=>u.box.y+u.box.h))-y0};
       const place={c,x:softAnchor(c.x-V.x,c.w,V.w,w,s,mem.some(u=>u.centred)),y:softAnchor(c.y-V.y,c.h,V.h,h,s,false)};for(const u of mem)blocks.set(u,place);}}
+  {const rules=platformRules(options.platforms,w,h);
+    if(rules.safeTop||rules.safeBottom){const places=[...new Set(blocks.values())],top=rules.safeTop*h*1.02,bottom=h-rules.safeBottom*h*1.02,box=(p:{c:Box;x:number;y:number}):Box=>({x:p.x,y:p.y,w:p.c.w*s,h:p.c.h*s});
+      for(const p of places){const b=box(p),ny=rules.safeTop&&b.y<top?top:rules.safeBottom&&b.y+b.h>bottom?bottom-b.h:b.y;if(ny===b.y)continue;
+        const moved={...b,y:ny};if(!places.some(o=>o!==p&&overlap(box(o),moved)>0&&overlap(box(o),b)===0))p.y=ny;}}}
   const t=Math.max(1,Math.min(mw,mh)*.015);
   for(const u of soft.units){ // in the master's layer order
-    const n=u.node.clone();frame.appendChild(n);if(Math.abs(s-1)>1e-4)n.rescale(s);let x:number,y:number;
+    const n=u.node.clone();frame.appendChild(n);rescaleSafe(n,s);let x:number,y:number;
     if(u.span){const b=u.box,sx=b.x<=t&&b.x+b.w>=mw-t,sy=b.y<=t&&b.y+b.h>=mh-t; // a bar from edge to edge of the master runs from edge to edge of the format
       x=sx?Math.min(0,b.x*s):softAnchor(b.x-V.x,b.w,V.w,w,s,false);y=sy?Math.min(0,b.y*s):softAnchor(b.y-V.y,b.h,V.h,h,s,false);
       if('resize'in n)n.resize(Math.max(.01,sx?w-2*x:n.width),Math.max(.01,sy?h-2*y:n.height));}
@@ -859,7 +875,7 @@ function placeExtras(frame:FrameNode,soft:Soft,w:number,h:number,k:number,minFon
     const open=[spot(right,top),spot(!right,top),spot(right,!top),spot(!right,!top)].filter(b=>!taken.some(o=>overlap(o,b)>0)),T=textLuminance(u.node);
     const place=open.find(b=>{const c=contrast(b,T);return c===null||c>=3;})||open[0];
     if(!place){warnings.add(label+': элемент «'+u.node.name.slice(0,30)+'» не поместился и не перенесён.');continue;}
-    const n=u.node.clone();frame.appendChild(n);n.rescale(scale);const cur=relBox(n,frame);if(cur){n.x+=place.x-cur.x;n.y+=place.y-cur.y;}taken.push(place);
+    const n=u.node.clone();frame.appendChild(n);rescaleSafe(n,scale);const cur=relBox(n,frame);if(cur){n.x+=place.x-cur.x;n.y+=place.y-cur.y;}taken.push(place);
   }
 }
 function validSubject(s:unknown):Rect01|null{
@@ -964,8 +980,9 @@ async function prepareSource(src:Source,stage:FrameNode,warnings:Set<string>,nee
 async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unknown,input:Options,progress:(done:number,total:number)=>void|Promise<void>=()=>{},isCancelled:()=>boolean=()=>false){
   const sizes=validateSizes(rawSizes),options=normalizeOptions(input),ai=validatePlan(options.aiPlan,sizes),warnings=new Set<string>();
   const list:Source[]=[{master,roles,options,sources:{},assets:{},metrics:null,template:null,ready:false,primary:true},...await alternateSources(master,options,warnings)];
-  // An object frame drawn over (almost) the whole picture marks no object: fitting it would only shrink the picture.
-  for(const src of list){src.reserve=hasReserve(src.master);const sj=src.options.subject;if(sj&&sj.w*sj.h>=.65)src.options.subject=null;}
+  // An object frame over (almost) the whole picture, or across its whole width or height, marks no object:
+  // fitting it would only shrink the picture, and any narrower format would report it as cut.
+  for(const src of list){src.reserve=hasReserve(src.master);const sj=src.options.subject;if(sj&&(sj.w*sj.h>=.65||sj.w>=.92||sj.h>=.92))src.options.subject=null;}
   const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});const exact=!!vo.preserveMaster&&!src.reserve&&sameAspect(src.master,w,h);return {w,h,src,exact,soft:!!vo.preserveMaster&&!exact&&(!!src.reserve||aspectDistance(src.master,w,h)<=SOFT_LIMIT),vo};});
   const stage=figma.createFrame();figma.currentPage.appendChild(stage);stage.name='Banner Adapt · подготовка';stage.fills=[];stage.clipsContent=false;stage.visible=false;stage.x=figma.viewport.center.x;stage.y=figma.viewport.center.y;
   let output:FrameNode|null=null,completed=0;const results:{id:string;w:number;h:number;name:string;status:Status;issues:Issue[]}[]=[];
@@ -998,7 +1015,7 @@ async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unk
           if(src.soft&&src.metrics){const head=made.children.find(c=>c.name===ROLE_NAMES.headline),hm=head&&head.type==='TEXT'?fontMetrics(head).max:0;
             try{placeExtras(made,src.soft,w,h,hm?hm/src.metrics.head:Math.min(w/src.master.width,h/src.master.height),options.minFont,mine,label,geo.map,opts.luma||null);}catch(err){mine.add(label+': элементы без роли не перенесены ('+messageText(err)+').');}}}
         v=made;
-        if(!src.primary)v.name+=' · из «'+src.master.name+'»';
+        if(!src.primary)v.name+=' · из «'+src.master.name.replace(/ · [⚠✕].*$/,'').slice(0,32)+'»';
         if(ai&&!exact)v.setSharedPluginData(DATA_NS,'aiFraming',ai.core?'core':'whole');
         platformChecks(v,w,h,options.platforms,mine);
         const geometric=exact?[]:checkGeometry(variantGeometry(v,w,h,kept?null:src.assets,opts.isBackground&&!opts.subjectGuessed?opts.subject||null:null,geo.map,kept||!!src.logoOverText));
