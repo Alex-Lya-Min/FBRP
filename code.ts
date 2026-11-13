@@ -732,12 +732,14 @@ function proportionalVariant(template:DesignNode,parent:FrameNode,w:number,h:num
 const SOFT_LIMIT=.45; // |ln| of the change in proportions: up to about 1.55×
 type SoftUnit={node:DesignNode;box:Box;centred:boolean;left:boolean;span:boolean;role?:Role;font:number};
 // content — the box around all units; reserve — the master keeps wide spare margins around it (room for cropping).
-type Soft={scene:FrameNode;block:{node:DesignNode;box:Box}|null;units:SoftUnit[];minText:number;fonts:number[];content:Box;reserve:boolean};
+// extent — the part of the master's plane the background picture covers (the master itself, or more when the picture
+// runs beyond the frame); decor — plates and fades that lie over the picture block and move with it.
+type Soft={scene:FrameNode;block:{node:DesignNode;box:Box}|null;units:SoftUnit[];decor:{node:DesignNode;box:Box}[];minText:number;fonts:number[];content:Box;reserve:boolean;extent:Box};
 // A master drawn with spare margins: all its text sits well inside, at least 14% of the shorter side from every edge.
 // The margins are picture reserve, not design, so formats are cut from the master around the content.
 // SOFT_BG — how much larger than the elements the background may get. A tall format with a background picture
 // allows more: the picture has to fill the height, and the text keeps the master's size and order.
-const RESERVE=.14,SOFT_PAD=.07,SOFT_BG=1.6,SOFT_BG_TALL=2.6;
+const RESERVE=.14,SOFT_PAD=.07,SOFT_BG=1.6,SOFT_BG_TALL=2.6,SOFT_WIDE=2.5;
 // A picture block that runs to the banner's edge is part of the composition, not reserve: such a master is not cut.
 function hasReserve(master:MasterNode,visual?:BaseNode|null){
   if(visual&&'absoluteBoundingBox'in visual&&isDesign(visual)&&isInside(visual,master)&&!coversMaster(visual,master)){
@@ -757,12 +759,12 @@ function softFrame(soft:Soft,master:MasterNode,w:number,h:number,platforms?:stri
     const rules=platformRules(platforms,w,h),p=SOFT_PAD*Math.min(w,h),pt=Math.max(p,rules.safeTop*h*1.02),pb=Math.max(p,rules.safeBottom*h*1.02),s0=Math.min((w-2*p)/C.w,(h-pt-pb)/C.h);
     const x0=Math.max(0,C.x-p/s0),y0=Math.max(0,C.y-pt/s0);V={x:x0,y:y0,w:Math.min(mw,C.x+C.w+p/s0)-x0,h:Math.min(mh,C.y+C.h+pb/s0)-y0};}
   const s=Math.min(w/V.w,h/V.h);
-  return {V,s,bg:Math.max(s,w/mw,h/mh)};
+  return {V,s,bg:Math.max(s,w/soft.extent.w,h/soft.extent.h)};
 }
 function softParts(master:MasterNode,sources:Assets,isBackground:boolean){
   const visual=sources.visual,roleIds=new Set<string>();for(const k of ROLE_KEYS){const n=sources[k];if(n&&k!=='visual')roleIds.add(n.id);}
   const keys=new Set<string>(roleIds);if(visual)keys.add(visual.id);
-  const mb=master.absoluteBoundingBox!,total=mb.width*mb.height,t=Math.max(1,Math.min(mb.width,mb.height)*.015),out={fg:[] as DesignNode[],block:null as DesignNode|null};
+  const mb=master.absoluteBoundingBox!,total=mb.width*mb.height,t=Math.max(1,Math.min(mb.width,mb.height)*.015),out={fg:[] as DesignNode[],block:null as DesignNode|null,decor:[] as DesignNode[]};
   const inside=(b:Rect)=>Math.max(0,Math.min(b.x+b.width,mb.x+mb.width)-Math.max(b.x,mb.x))*Math.max(0,Math.min(b.y+b.height,mb.y+mb.height)-Math.max(b.y,mb.y));
   const big=(n:SceneNode)=>{const b=n.absoluteBoundingBox;return !b||inside(b)>=total*.5;};
   // A picture block that runs to the banner's edge or is large keeps its share of the banner; a small one is a unit.
@@ -771,6 +773,9 @@ function softParts(master:MasterNode,sources:Assets,isBackground:boolean){
     if(!c.visible||!isDesign(c)||offMaster(c,master))continue;
     if(visual&&c.id===visual.id){if(!isBackground){if(bleeds(c))out.block=c;else out.fg.push(c);}continue;}
     if(roleIds.has(c.id)||c.type==='TEXT'){out.fg.push(c);continue;}
+    // A gradient plate or fade drawn over the picture block (it hides the picture's edge) belongs to the picture.
+    if((c.type==='RECTANGLE'||c.type==='ELLIPSE')&&out.block&&!imagePaint(c)&&gradientPaint(c)){const b=c.absoluteBoundingBox,v=visibleRect(out.block,master)||out.block.absoluteBoundingBox;
+      if(b&&v&&Math.max(0,Math.min(b.x+b.width,v.x+v.width)-Math.max(b.x,v.x))*Math.max(0,Math.min(b.y+b.height,v.y+v.height)-Math.max(b.y,v.y))>=b.width*b.height*.15){out.decor.push(c);continue;}}
     if(!('children'in c)){if(!big(c))out.fg.push(c);continue;} // small shape — a unit; large shape — background
     const holdsKey=subtreeHas(c,keys),masked=c.children.some(k=>'isMask'in k&&k.isMask);
     if(!holdsKey&&!big(c)){out.fg.push(c);continue;} // small group, frame or instance
@@ -780,6 +785,32 @@ function softParts(master:MasterNode,sources:Assets,isBackground:boolean){
     walk(c);}};
   if('children'in master)walk(master);
   return out;
+}
+// The area a background picture covers, in the master's coordinates: never smaller than the master.
+function pictureExtent(visual:DesignNode,master:MasterNode):Box{
+  const mb=master.absoluteBoundingBox!,whole:Box={x:0,y:0,w:mb.width,h:mb.height};
+  const flat=(n:SceneNode)=>Math.abs(n.absoluteTransform[0][1])<.001&&Math.abs(n.absoluteTransform[1][0])<.001;
+  const img=[visual,...descendants(visual,400)].filter(n=>flat(n)&&(n.opacity??1)>.99&&'fills'in n&&Array.isArray(n.fills)&&n.fills.some(p=>p.type==='IMAGE'&&p.visible!==false&&(p.opacity??1)>.99&&(p.scaleMode==='FILL'||p.scaleMode==='CROP'))).sort((a,b)=>b.width*b.height-a.width*a.height)[0];
+  const a=img?.absoluteBoundingBox;if(!img||!a)return whole;
+  let x0=a.x,y0=a.y,x1=a.x+a.width,y1=a.y+a.height;
+  for(let p:BaseNode|null=img.parent;p&&p.id!==master.id;p=p.parent){if(!('absoluteBoundingBox'in p))return whole;
+    if('clipsContent'in p&&p.clipsContent){const b=p.absoluteBoundingBox;if(!b)return whole;x0=Math.max(x0,b.x);y0=Math.max(y0,b.y);x1=Math.min(x1,b.x+b.width);y1=Math.min(y1,b.y+b.height);}}
+  const ex=Math.min(0,x0-mb.x),ey=Math.min(0,y0-mb.y);
+  return {x:ex,y:ey,w:Math.max(mb.width,x1-mb.x)-ex,h:Math.max(mb.height,y1-mb.y)-ey};
+}
+// Shades and plates of the scene that run from edge to edge of the master are stretched over the whole picture,
+// so they do not end where the master's frame used to be. orig and clone are walked in parallel.
+function stretchDecor(orig:SceneNode,clone:SceneNode,remove:Set<string>,master:MasterNode,E:Box){
+  if(!('children'in orig)||!('children'in clone)||clone.type==='INSTANCE')return;
+  const kept=orig.children.filter(c=>!remove.has(c.id)),mb=master.absoluteBoundingBox!,t=Math.max(1,Math.min(mb.width,mb.height)*.015);
+  if(kept.length!==clone.children.length)return;
+  kept.forEach((o,i)=>{const c=clone.children[i];
+    if('children'in o){if((o.type==='FRAME'||o.type==='GROUP')&&!('clipsContent'in o&&o.clipsContent)&&Math.abs(o.rotation)<.01)stretchDecor(o,c,remove,master,E);return;}
+    if((o.type!=='RECTANGLE'&&o.type!=='ELLIPSE')||c.type!==o.type||imagePaint(o)||Math.abs(o.rotation)>.01||!o.visible)return;
+    const a=o.absoluteBoundingBox;if(!a)return;const b={x:a.x-mb.x,y:a.y-mb.y,w:a.width,h:a.height};
+    const sx=E.w>mb.width+1&&b.x<=t&&b.x+b.w>=mb.width-t,sy=E.h>mb.height+1&&b.y<=t&&b.y+b.h>=mb.height-t;if(!sx&&!sy)return;
+    const kx=sx?E.w/mb.width:1,ky=sy?E.h/mb.height:1,nx=sx?E.x+b.x*kx:b.x,ny=sy?E.y+b.y*ky:b.y;
+    c.resize(Math.max(.01,c.width*kx),Math.max(.01,c.height*ky));c.x+=nx-b.x;c.y+=ny-b.y;});
 }
 async function prepareSoft(src:Source,sources:Assets,stage:FrameNode,warnings:Set<string>):Promise<Soft>{
   const {master,options}=src,mb=master.absoluteBoundingBox!,parts=softParts(master,sources,!!options.isBackground);
@@ -807,16 +838,24 @@ async function prepareSoft(src:Source,sources:Assets,stage:FrameNode,warnings:Se
     const tx=(u.type==='TEXT'?[u]:descendants(u,400).filter(x=>x.type==='TEXT')) as TextNode[];
     units.push({node:n,box,centred:u.type==='TEXT'&&u.textAlignHorizontal==='CENTER',left:tx.length>0&&tx.every(x=>x.textAlignHorizontal==='LEFT'),span,role,font:fm.max});
   }
-  const remove=new Set(parts.fg.map(n=>n.id));if(parts.block)remove.add(parts.block.id);
+  const remove=new Set(parts.fg.map(n=>n.id));if(parts.block)remove.add(parts.block.id);for(const d of parts.decor)remove.add(d.id);
   for(const x of descendants(master,3000))if(x.type==='TEXT')remove.add(x.id);
+  const decor:Soft['decor']=[];
+  for(const d of parts.decor){const bb=d.absoluteBoundingBox;if(!bb)continue;const n=copyOf(d);stage.appendChild(n);resetPosition(n);n.relativeTransform=relativeToMaster(d,master);decor.push({node:n,box:rel(bb)});}
+  // A background picture larger than the master: what the master's frame hides is spare picture. The scene is left
+  // unclipped, so a wider or taller format shows more of the picture instead of enlarging it.
+  const whole:Box={x:0,y:0,w:mb.width,h:mb.height},extent=options.isBackground&&sources.visual?pictureExtent(sources.visual,master):whole,spare=extent.w>whole.w+1||extent.h>whole.h+1;
+  if(spare&&'children'in master){const keep=new Set<string>(sources.visual?[sources.visual.id]:[]);
+    const hide=(p:BaseNode&ChildrenMixin)=>{for(const c of p.children){if(remove.has(c.id))continue;if(offMaster(c,master)&&!subtreeHas(c,keep)){remove.add(c.id);continue;}if('children'in c&&c.type!=='INSTANCE'&&c.type!=='BOOLEAN_OPERATION')hide(c);}};hide(master);}
   const scene=sceneWithout(master,stage,remove);
+  if(spare){const copy=scene.children[0];scene.clipsContent=false;if(copy&&'clipsContent'in copy)copy.clipsContent=false;if(copy)stretchDecor(master,copy,remove,master,extent);}
   let block:Soft['block']=null;
   if(parts.block){const v=parts.block,r=visibleRect(v,master)||v.absoluteBoundingBox;let n:DesignNode|null=clippedCopy(v,master,stage);
     if(!n){n=copyOf(v);stage.appendChild(n);resetPosition(n);n.x=0;n.y=0;}
     if(r)block={node:n,box:rel(r)};}
   const solid=units.filter(u=>!u.span),cx=Math.min(...solid.map(u=>u.box.x)),cy=Math.min(...solid.map(u=>u.box.y));
   const content=solid.length?{x:cx,y:cy,w:Math.max(...solid.map(u=>u.box.x+u.box.w))-cx,h:Math.max(...solid.map(u=>u.box.y+u.box.h))-cy}:{x:0,y:0,w:mb.width,h:mb.height};
-  return {scene,block,units,minText:Number.isFinite(minText)?minText:0,fonts,content,reserve:!!src.reserve&&solid.length>0};
+  return {scene,block,units,decor,minText:Number.isFinite(minText)?minText:0,fonts,content,reserve:!!src.reserve&&solid.length>0,extent};
 }
 // New start of a block along one axis. lo/size — the block in the master, M — the master's length, T — the format's.
 // A block near an edge keeps its scaled margin to that edge; a block in the middle keeps its relative centre.
@@ -842,11 +881,16 @@ function softVariant(soft:Soft,parent:FrameNode,w:number,h:number,master:MasterN
     // When the background is larger than the elements, the object is nudged back inside the format if it fits there.
     const inside=(pos:number,lo:number,len:number,T:number)=>{const a=pos+lo*bg,b=a+len*bg;return len*bg>T?pos:a<0?pos-a:b>T?pos-(b-T):pos;};
     let x=(ax-V.x)/V.w*w-ax*bg,y=(ay-V.y)/V.h*h-ay*bg;if(sb){x=inside(x,sb.x*mw,sb.w*mw,w);y=inside(y,sb.y*mh,sb.h*mh,h);}
-    x=clamp(x,Math.min(0,w-mw*bg),0);y=clamp(y,Math.min(0,h-mh*bg),0);n.x=x;n.y=y;
+    const E=soft.extent;x=clamp(x,Math.min(-E.x*bg,w-(E.x+E.w)*bg),-E.x*bg);y=clamp(y,Math.min(-E.y*bg,h-(E.y+E.h)*bg),-E.y*bg);n.x=x;n.y=y;
     if(options.isBackground)geometry.map=(u,v)=>({x:x+u*mw*bg,y:y+v*mh*bg});}
   // Picture block: the same share of the format as in the master, cropped around the object.
   if(soft.block){const b=soft.block.box,box={x:(b.x-V.x)/V.w*w,y:(b.y-V.y)/V.h*h,w:b.w/V.w*w,h:b.h/V.h*h};
-    visualInto(soft.block.node,frame,box,box,{...options,isBackground:false,fade:false,imageFit:options.imageFit==='auto'?'fill':options.imageFit},color);}
+    visualInto(soft.block.node,frame,box,box,{...options,isBackground:false,fade:false,imageFit:options.imageFit==='auto'?'fill':options.imageFit},color);
+    // What lies over the picture keeps its place on it: the same share of the format as the picture block.
+    for(const d of soft.decor){const n=d.node.clone();frame.appendChild(n);const tx=(d.box.x-V.x)/V.w*w,ty=(d.box.y-V.y)/V.h*h,tw=d.box.w/V.w*w,th=d.box.h/V.h*h;
+      const r='rotation'in n?Math.abs(n.rotation):0,side=Math.abs(r-90)<.01;
+      if('resize'in n&&(r<.01||Math.abs(r-180)<.01||side))n.resize(Math.max(.01,side?th:tw),Math.max(.01,side?tw:th));else rescaleSafe(n,s);
+      const cur=relBox(n,frame);if(cur){n.x+=tx+(tw-cur.w)/2-cur.x;n.y+=ty+(th-cur.h)/2-cur.y;}}}
   // Units closer than the gap move together as one block. The gap follows the type size: lines of one text block
   // stand closer than its largest font.
   const rigid=soft.units.filter(u=>!u.span),base=soft.reserve?.06*Math.min(soft.content.w,soft.content.h):.045*Math.min(mw,mh),root=rigid.map((_,i)=>i);
@@ -1006,13 +1050,23 @@ async function prepareSource(src:Source,stage:FrameNode,warnings:Set<string>,nee
   // With a picture block the schemes also keep what the master has behind everything: large glows, plates, gradients.
   if(!options.isBackground&&src.soft&&descendants(src.soft.scene,3000).some(n=>!('children'in n)&&paintVisible(n)))assets.backdrop=src.soft.scene;
 }
+// Share of the object box covered by text, button and logo.
+function coveredShare(object:Box,boxes:Box[]){const a=area(object);return a>0?Math.min(1,boxes.reduce((t,b)=>t+overlap(object,b),0)/a):0;}
+function objectClear(frame:FrameNode,src:Source,subject:Rect01,map:((u:number,v:number)=>{x:number;y:number})|null,w:number,h:number){
+  if(!map)return false;const mb=src.master.absoluteBoundingBox!,roles=(['headline','date','body','cta','logo'] as Role[]);
+  const a=map(subject.x,subject.y),c=map(subject.x+subject.w,subject.y+subject.h),obj={x:a.x,y:a.y,w:c.x-a.x,h:c.y-a.y};
+  if(area(obj)<=0||overlap(obj,{x:0,y:0,w,h})/area(obj)<.9)return false;
+  const now=frame.children.filter(n=>roles.some(r=>n.name===ROLE_NAMES[r])).map(n=>relBox(n,frame)).filter((b):b is Box=>!!b);
+  const was=roles.map(r=>src.sources[r]?.absoluteBoundingBox).filter((b):b is Rect=>!!b).map(b=>({x:b.x-mb.x,y:b.y-mb.y,w:b.width,h:b.height}));
+  return coveredShare(obj,now)<=coveredShare({x:subject.x*mb.width,y:subject.y*mb.height,w:subject.w*mb.width,h:subject.h*mb.height},was)+.04;
+}
 async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unknown,input:Options,progress:(done:number,total:number)=>void|Promise<void>=()=>{},isCancelled:()=>boolean=()=>false){
   const sizes=validateSizes(rawSizes),options=normalizeOptions(input),ai=validatePlan(options.aiPlan,sizes),warnings=new Set<string>();
   const list:Source[]=[{master,roles,options,sources:{},assets:{},metrics:null,template:null,ready:false,primary:true},...await alternateSources(master,options,warnings)];
   // An object frame over (almost) the whole picture, or across its whole width or height, marks no object:
   // fitting it would only shrink the picture, and any narrower format would report it as cut.
   for(const src of list){src.reserve=hasReserve(src.master,src.roles.visual?await figma.getNodeByIdAsync(src.roles.visual):null);const sj=src.options.subject;if(sj&&(sj.w*sj.h>=.65||sj.w>=.92||sj.h>=.92))src.options.subject=null;}
-  const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});const exact=!!vo.preserveMaster&&!src.reserve&&sameAspect(src.master,w,h);return {w,h,src,exact,soft:!!vo.preserveMaster&&!exact&&(!!src.reserve||aspectDistance(src.master,w,h)<=(h>w?Math.log(SOFT_BG_TALL):SOFT_LIMIT)),vo};});
+  const plan=sizes.map(([w,h])=>{const src=pickSource(list,w,h),vo=variantOptions(src.options,w+'x'+h,src.primary?ai:{});const exact=!!vo.preserveMaster&&!src.reserve&&sameAspect(src.master,w,h);return {w,h,src,exact,soft:!!vo.preserveMaster&&!exact&&(!!src.reserve||aspectDistance(src.master,w,h)<=Math.log(h>w?SOFT_BG_TALL:SOFT_WIDE)),vo};});
   const stage=figma.createFrame();figma.currentPage.appendChild(stage);stage.name='Banner Adapt · подготовка';stage.fills=[];stage.clipsContent=false;stage.visible=false;stage.x=figma.viewport.center.x;stage.y=figma.viewport.center.y;
   let output:FrameNode|null=null,completed=0;const results:{id:string;w:number;h:number;name:string;status:Status;issues:Issue[]}[]=[];
   try{
@@ -1034,10 +1088,14 @@ async function generate(master:MasterNode,roles:Record<Role,string>,rawSizes:unk
       // text is reported, as in the schemes — they do not make it larger either. Smaller formats are re-laid by the schemes.
       // The background must not outgrow the elements too far either: then the picture no longer matches the text.
       const sc=soft&&src.soft?softFrame(src.soft,src.master,w,h,options.platforms):null,sf=sc&&src.soft&&(!src.soft.fonts.length||Math.max(...src.soft.fonts)*sc.s>=options.minFont-.01)&&sc.bg<=sc.s*(src.options.isBackground&&h>w?SOFT_BG_TALL:SOFT_BG)?src.soft:null;let kept=false;
+      // A wide format far from the master keeps the master's composition only with a known object that stays whole
+      // and no more covered by text than in the master; otherwise it is laid out by the schemes, as before.
+      const far=w>=h&&aspectDistance(src.master,w,h)>SOFT_LIMIT&&!src.reserve,known=!!opts.isBackground&&!!opts.subject&&!opts.subjectGuessed;
       try{
         const geo={map:null as ((u:number,v:number)=>{x:number;y:number})|null};
         let made:FrameNode|null=exact&&src.template?proportionalVariant(src.template,output,w,h,src.master,mine,options.minFont):null;
-        if(!made&&sf)try{made=softVariant(sf,output,w,h,src.master,opts,mine,geo);kept=true;}
+        if(!made&&sf&&(!far||known))try{made=softVariant(sf,output,w,h,src.master,opts,mine,geo);kept=true;
+            if(far&&!objectClear(made,src,opts.subject!,geo.map,w,h)){for(const n of output.children.slice(before))n.remove();made=null;kept=false;geo.map=null;mine.clear();}}
           catch(err){for(const n of output.children.slice(before))n.remove();mine.clear();geo.map=null;mine.add(label+': адаптация мастера не удалась ('+messageText(err)+') — формат собран по схеме.');}
         if(!made){made=createVariant(src.assets,output,w,h,opts,src.metrics!,mine,geo);
           // Elements without a role still travel: scaled like the headline of this format.
