@@ -49,19 +49,35 @@ let masterId = '', busy = false, cancelled = false;
 const cloneData = (value) => JSON.parse(JSON.stringify(value));
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 function descendants(node, limit = 800) {
-    const result = [], pending = 'children' in node && node.type !== 'DOCUMENT' ? [...node.children].reverse() : [];
+    const cut = (n, c) => {
+        const b = 'clipsContent' in n && n.clipsContent && 'absoluteBoundingBox' in n ? n.absoluteBoundingBox : null;
+        return b ? [Math.max(c ? c[0] : -Infinity, b.x), Math.max(c ? c[1] : -Infinity, b.y), Math.min(c ? c[2] : Infinity, b.x + b.width), Math.min(c ? c[3] : Infinity, b.y + b.height)] : c;
+    };
+    const result = [], root = cut(node, null), pending = 'children' in node && node.type !== 'DOCUMENT' ? [...node.children].reverse().map(c => [c, root]) : [];
     while (pending.length) {
-        const n = pending.pop();
+        const [n, clip] = pending.pop();
         if (!n.visible)
             continue;
-        if (isDesign(n))
+        const b = n.absoluteBoundingBox, out = !!clip && !!b && (b.x >= clip[2] - .5 || b.y >= clip[3] - .5 || b.x + b.width <= clip[0] + .5 || b.y + b.height <= clip[1] + .5);
+        if (!out && isDesign(n))
             result.push(n);
         if (result.length > limit)
             throw new Error('В мастере больше ' + limit + ' слоёв. Выберите отдельный баннер.');
-        if ('children' in n)
-            pending.push(...[...n.children].reverse());
+        if ('children' in n) {
+            if (out && 'clipsContent' in n && n.clipsContent)
+                continue;
+            const c = cut(n, clip);
+            pending.push(...[...n.children].reverse().map(k => [k, c]));
+        }
     }
     return result;
+}
+// Entirely outside the master's frame (the master clips it away).
+function offMaster(n, master) {
+    const a = n.absoluteBoundingBox, b = master.absoluteBoundingBox;
+    if (!a || !b || master.type === 'GROUP' || ('clipsContent' in master && !master.clipsContent))
+        return false;
+    return a.x >= b.x + b.width - .5 || a.y >= b.y + b.height - .5 || a.x + a.width <= b.x + .5 || a.y + a.height <= b.y + .5;
 }
 function isInside(node, ancestor) { let p = node; while (p) {
     if (p.id === ancestor.id)
@@ -324,7 +340,19 @@ function masterMetrics(sources, assets, master) {
         return fallback; const g = y.y - (x.y + x.height); return g >= 0 && g < ref * 3 ? g / ref : fallback; };
     // The text stack keeps the master's order (a footnote under the button stays under it) and the master's gaps.
     const fallbackGap = { date: .3, headline: .3, body: .35, cta: .55 };
-    const order = ['date', 'headline', 'body', 'cta'].filter(r => sources[r] && box(sources[r])).sort((p, q) => box(sources[p]).y - box(sources[q]).y);
+    // Only what stands in one column with the headline is ordered by height. An element beside it (a button at the
+    // right of a strip) is not above or below anything: it takes its usual place in the stack.
+    const present = ['date', 'headline', 'body', 'cta'].filter(r => sources[r] && box(sources[r])), hb = box(sources.headline);
+    const inColumn = (r) => { const b = box(sources[r]); return !hb || Math.min(b.x + b.width, hb.x + hb.width) - Math.max(b.x, hb.x) > 0; };
+    const order = present.filter(inColumn).sort((p, q) => box(sources[p]).y - box(sources[q]).y);
+    for (const r of present.filter(r => !inColumn(r))) {
+        if (r === 'date')
+            order.unshift(r);
+        else if (r === 'body')
+            order.splice(order.indexOf('headline') + 1, 0, r);
+        else
+            order.push(r);
+    }
     const stack = order.map((role, i) => ({ role, gap: i ? gap(sources[order[i - 1]], sources[role], fallbackGap[role]) : 0 }));
     return { head: ref, date: sources.date ? sizeOf(sources.date) || ref * .55 : ref * .55, body: sources.body ? sizeOf(sources.body) || ref * .6 : ref * .6, cta: assets.cta ? assets.cta.height : sources.cta ? sources.cta.height : ref * 1.4,
         logoH: assets.logo ? assets.logo.height / ref : 0, gapDate: gap(sources.date, sources.headline, .3), gapBody: gap(sources.headline, sources.body, .35), gapCta: gap(sources.body || sources.headline, sources.cta, .55), mw: master.width, mh: master.height, headEm: sources.headline ? sources.headline.width / ref : 0, textBox: unionBox([sources.date, sources.headline, sources.body, sources.cta], master), visualBox: (() => { const v = sources.visual && visibleRect(sources.visual, master), mb = master.absoluteBoundingBox; return v && mb ? { x: (v.x - mb.x) / mb.width, y: (v.y - mb.y) / mb.height, w: v.width / mb.width, h: v.height / mb.height } : unionBox([sources.visual], master); })(), textLum: textLuminance(sources.headline), stack };
@@ -373,6 +401,9 @@ function analyze(master) {
     let logo = namedLogo;
     if (!logo)
         logo = nodes.find(n => n.parent === master && ['FRAME', 'GROUP'].includes(n.type) && n !== cta && n !== visual && descendants(n).some(x => x.type === 'VECTOR') && !descendants(n).some(x => x.type === 'TEXT' || imagePaint(x)));
+    // A logo left as a bare vector on the master: a small flat mark near the top or the bottom edge.
+    if (!logo)
+        logo = nodes.find(n => n.parent === master && ['VECTOR', 'BOOLEAN_OPERATION'].includes(n.type) && n !== cta && n !== visual && paintVisible(n) && n.width * n.height <= area * .06 && n.width >= n.height && n.width >= master.width * .08 && (() => { const b = n.absoluteBoundingBox, m = master.absoluteBoundingBox; return !!b && !!m && (b.y + b.height / 2 < m.y + m.height * .3 || b.y + b.height / 2 > m.y + m.height * .8); })());
     {
         const up = logo && logoLockup(logo, master);
         if (up && up !== cta && up !== visual && !(headline && isInside(headline, up)))
@@ -1449,7 +1480,16 @@ const SOFT_LIMIT = .45; // |ln| of the change in proportions: up to about 1.55×
 // SOFT_BG — how much larger than the elements the background may get. A tall format with a background picture
 // allows more: the picture has to fill the height, and the text keeps the master's size and order.
 const RESERVE = .14, SOFT_PAD = .07, SOFT_BG = 1.6, SOFT_BG_TALL = 2.6;
-function hasReserve(master) {
+// A picture block that runs to the banner's edge is part of the composition, not reserve: such a master is not cut.
+function hasReserve(master, visual) {
+    if (visual && 'absoluteBoundingBox' in visual && isDesign(visual) && isInside(visual, master) && !coversMaster(visual, master)) {
+        const v = visibleRect(visual, master) || visual.absoluteBoundingBox, m = master.absoluteBoundingBox;
+        if (v && m) {
+            const t = RESERVE * Math.min(m.width, m.height);
+            if (v.x - m.x < t || v.y - m.y < t || m.x + m.width - v.x - v.width < t || m.y + m.height - v.y - v.height < t)
+                return false;
+        }
+    }
     const mb = master.absoluteBoundingBox, boxes = descendants(master, 3000).filter(n => n.type === 'TEXT').map(n => n.absoluteBoundingBox).filter((b) => !!b);
     if (!mb || !boxes.length)
         return false;
@@ -1488,7 +1528,7 @@ function softParts(master, sources, isBackground) {
     const bleeds = (n) => { const b = visibleRect(n, master) || n.absoluteBoundingBox; return !!b && (inside(b) >= total * .25 || b.x <= mb.x + t || b.y <= mb.y + t || b.x + b.width >= mb.x + mb.width - t || b.y + b.height >= mb.y + mb.height - t); };
     const walk = (parent) => {
         for (const c of parent.children) {
-            if (!c.visible || !isDesign(c))
+            if (!c.visible || !isDesign(c) || offMaster(c, master))
                 continue;
             if (visual && c.id === visual.id) {
                 if (!isBackground) {
@@ -1574,7 +1614,8 @@ async function prepareSoft(src, sources, stage, warnings) {
         // A plain bar or plate that runs from edge to edge keeps running from edge to edge.
         const flat = u.type === 'RECTANGLE' && !imagePaint(u) && Math.abs(u.rotation) < .01;
         const span = flat && ((box.x <= t && box.x + box.w >= mb.width - t) || (box.y <= t && box.y + box.h >= mb.height - t));
-        units.push({ node: n, box, centred: u.type === 'TEXT' && u.textAlignHorizontal === 'CENTER', span, role, font: fm.max });
+        const tx = (u.type === 'TEXT' ? [u] : descendants(u, 400).filter(x => x.type === 'TEXT'));
+        units.push({ node: n, box, centred: u.type === 'TEXT' && u.textAlignHorizontal === 'CENTER', left: tx.length > 0 && tx.every(x => x.textAlignHorizontal === 'LEFT'), span, role, font: fm.max });
     }
     const remove = new Set(parts.fg.map(n => n.id));
     if (parts.block)
@@ -1603,8 +1644,12 @@ async function prepareSoft(src, sources, stage, warnings) {
 }
 // New start of a block along one axis. lo/size — the block in the master, M — the master's length, T — the format's.
 // A block near an edge keeps its scaled margin to that edge; a block in the middle keeps its relative centre.
-function softAnchor(lo, size, M, T, s, centred) {
+// A wide block of left-aligned text that starts at the left margin keeps its left line (it reads from there), even
+// when its right margin happens to be the smaller one.
+function softAnchor(lo, size, M, T, s, centred, left = false) {
     const hi = M - lo - size, near = Math.min(lo, hi), middle = (lo + size / 2) / M * T - size * s / 2;
+    if (left && size >= .5 * M && lo <= .12 * M)
+        return lo * s;
     if (Math.abs(lo - hi) <= .02 * M && (centred || near > .12 * M))
         return middle;
     if (near <= .12 * M || near <= .6 * Math.max(lo, hi))
@@ -1689,7 +1734,7 @@ function softVariant(soft, parent, w, h, master, options, warnings, geometry) {
             continue;
         for (const mem of split(rigid.filter((_, j) => find(j) === i))) {
             const x0 = Math.min(...mem.map(u => u.box.x)), y0 = Math.min(...mem.map(u => u.box.y)), c = { x: x0, y: y0, w: Math.max(...mem.map(u => u.box.x + u.box.w)) - x0, h: Math.max(...mem.map(u => u.box.y + u.box.h)) - y0 };
-            const place = { c, x: softAnchor(c.x - V.x, c.w, V.w, w, s, mem.some(u => u.centred)), y: softAnchor(c.y - V.y, c.h, V.h, h, s, false) };
+            const place = { c, x: softAnchor(c.x - V.x, c.w, V.w, w, s, mem.some(u => u.centred), mem.some(u => u.left) && mem.every(u => u.left || !u.font)), y: softAnchor(c.y - V.y, c.h, V.h, h, s, false) };
             for (const u of mem)
                 blocks.set(u, place);
         }
@@ -1875,7 +1920,7 @@ async function rolesFor(master) {
             if (!id)
                 continue;
             const n = await figma.getNodeByIdAsync(id);
-            if (!n || !isInside(n, master)) {
+            if (!n || !isInside(n, master) || ('absoluteBoundingBox' in n && offMaster(n, master))) {
                 ok = false;
                 break;
             }
@@ -2010,7 +2055,7 @@ async function generate(master, roles, rawSizes, input, progress = () => { }, is
     // An object frame over (almost) the whole picture, or across its whole width or height, marks no object:
     // fitting it would only shrink the picture, and any narrower format would report it as cut.
     for (const src of list) {
-        src.reserve = hasReserve(src.master);
+        src.reserve = hasReserve(src.master, src.roles.visual ? await figma.getNodeByIdAsync(src.roles.visual) : null);
         const sj = src.options.subject;
         if (sj && (sj.w * sj.h >= .65 || sj.w >= .92 || sj.h >= .92))
             src.options.subject = null;
